@@ -7,7 +7,7 @@
   "intents": [
     {
       "name": "tip_hosted_checkout",
-      "description": "Send a tip via a hosted payment page (e.g. Stripe, Coinbase Commerce). Creates a one-time checkout session. Returns a payment URL the user visits to complete payment. Minimum $5.",
+      "description": "Send a tip via a hosted payment page (e.g., fiat gateway or crypto processor). Creates a one-time checkout session. Returns a payment URL the user visits to complete payment. Minimum $5.",
       "endpoint": "/api/checkout/tip",
       "method": "POST",
       "parameters": {

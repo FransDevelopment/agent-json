@@ -254,11 +254,103 @@ test("rejects splits that don't sum to 1.0", () => {
       type: "cpa",
       rate: 2.0,
       currency: "USDC",
-      splits: { creator: 0.5, platform: 0.1, orchestrator: 0.1 },
+      splits: { orchestrator: 0.5, platform: 0.1, referrer: 0.1 },
     },
   });
   assert.strictEqual(result.valid, false);
   assert.ok(result.errors.some((e) => e.includes("splits")));
+});
+
+// --- Unit tests: price ---
+
+console.log("\n  Price validation\n");
+
+test("accepts valid price", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.50, currency: "USD", model: "per_call" },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects invalid price currency", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.50, currency: "EUR", model: "per_call" },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+});
+
+test("rejects per_unit model without unit_param", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.50, currency: "USD", model: "per_unit" },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+});
+
+// --- Unit tests: incentive ---
+
+console.log("\n  Incentive validation\n");
+
+test("accepts valid incentive", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    incentive: { type: "cpa", rate: 0.25, currency: "USDC" },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects invalid incentive currency", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    incentive: { type: "cpa", rate: 0.25, currency: "ETH" },
+  });
+  assert.strictEqual(result.valid, false);
+});
+
+test("accepts intent-level incentive", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        incentive: { type: "cpa", rate: 0.10, currency: "USDC" },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
 });
 
 // --- Unit tests: tier detection ---

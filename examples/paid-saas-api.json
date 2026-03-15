@@ -1,0 +1,94 @@
+{
+  "version": "1.0",
+  "origin": "api.docanalyzer.example.com",
+  "payout_address": "0x0000000000000000000000000000000000000000",
+  "display_name": "DocAnalyzer",
+  "description": "AI-powered document analysis platform. Extracts clauses, identifies risks, and generates summaries from legal and business documents.",
+  "intents": [
+    {
+      "name": "analyze_document",
+      "description": "Analyze a document for key clauses, risk factors, and generate a structured summary. Supports PDF, DOCX, and plain text. Returns categorized findings with confidence scores.",
+      "endpoint": "/api/v1/analyze",
+      "method": "POST",
+      "parameters": {
+        "document_url": {
+          "type": "string",
+          "required": true,
+          "description": "Publicly accessible URL of the document to analyze"
+        },
+        "analysis_type": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "summary",
+            "risk",
+            "clauses",
+            "full"
+          ],
+          "default": "full",
+          "description": "Type of analysis to perform"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Structured analysis results",
+        "properties": {
+          "summary": {
+            "type": "string",
+            "description": "Document summary"
+          },
+          "risk_score": {
+            "type": "number",
+            "description": "Overall risk score (0-100)"
+          },
+          "findings": {
+            "type": "array",
+            "description": "Array of categorized findings with confidence scores"
+          }
+        }
+      },
+      "price": {
+        "amount": 0.50,
+        "currency": "USD",
+        "model": "per_call"
+      }
+    },
+    {
+      "name": "batch_analyze",
+      "description": "Analyze multiple documents in a single request. Cost scales with the number of documents. Returns individual results for each document.",
+      "endpoint": "/api/v1/batch",
+      "method": "POST",
+      "parameters": {
+        "document_urls": {
+          "type": "array",
+          "required": true,
+          "description": "Array of document URLs to analyze (max 20)"
+        }
+      },
+      "price": {
+        "amount": 0.40,
+        "currency": "USD",
+        "model": "per_unit",
+        "unit_param": "document_urls"
+      }
+    },
+    {
+      "name": "search_templates",
+      "description": "Search the public template library for document analysis templates. Free to use.",
+      "endpoint": "/api/v1/templates",
+      "method": "GET",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "required": true,
+          "description": "Search keywords"
+        }
+      }
+    }
+  ],
+  "bounty": {
+    "type": "cpa",
+    "rate": 0.25,
+    "currency": "USDC"
+  }
+}

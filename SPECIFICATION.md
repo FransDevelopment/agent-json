@@ -46,7 +46,7 @@ The manifest supports progressive integration. Start minimal, add detail as your
 {
   "version": "1.0",
   "origin": "example.com",
-  "payout_address": "0x1234567890abcdef1234567890abcdef12345678"
+  "payout_address": "0x0000000000000000000000000000000000000000"
 }
 ```
 
@@ -58,7 +58,7 @@ Three fields. Your domain is now discoverable by agent runtimes. Agents interact
 {
   "version": "1.0",
   "origin": "example.com",
-  "payout_address": "0x1234567890abcdef1234567890abcdef12345678",
+  "payout_address": "0x0000000000000000000000000000000000000000",
   "display_name": "Example Store",
   "description": "Online marketplace for electronics and home goods.",
   "intents": [
@@ -114,7 +114,12 @@ Three fields. Your domain is now discoverable by agent runtimes. Agents interact
   ],
   "bounty": {
     "type": "cpa",
-    "rate": 2.00,
+    "rate": 2.0,
+    "currency": "USDC"
+  },
+  "incentive": {
+    "type": "cpa",
+    "rate": 0.5,
     "currency": "USDC"
   }
 }
@@ -130,7 +135,7 @@ Extends Tier 2 with a cryptographic identity for verified provider authenticatio
 {
   "version": "1.0",
   "origin": "example.com",
-  "payout_address": "0x1234567890abcdef1234567890abcdef12345678",
+  "payout_address": "0x0000000000000000000000000000000000000000",
   "display_name": "Example Store",
   "description": "Online marketplace for electronics and home goods.",
   "identity": {
@@ -176,7 +181,9 @@ Each intent represents one capability the service offers to agents.
 | `method` | string | no | HTTP method for the endpoint. One of `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`. Required when `endpoint` is present. Default: `"POST"`. |
 | `parameters` | object | no | Map of parameter names to `Parameter` objects. See §4.3. For `GET` requests, parameters are sent as query strings. For `POST`/`PUT`, as JSON body. |
 | `returns` | object | no | Description of the response shape. See §4.3.1. Helps agents understand what to expect without making a call. |
-| `bounty` | object | no | Per-intent bounty override. Same schema as root `bounty`. Takes priority over the manifest-level bounty for this intent. |
+| `price` | object | no | What the provider charges to access this intent. See §4.5. When present, the runtime must arrange payment before or during execution. |
+| `bounty` | object | no | Per-intent bounty override. What the provider pays the runtime for completing this intent. Takes priority over manifest-level bounty. |
+| `incentive` | object | no | Per-intent incentive override. What the provider suggests the runtime pay for fulfilling this intent. Takes priority over manifest-level incentive. |
 
 When `endpoint` is present, the intent is a **direct API intent** — the agent runtime calls the endpoint with the declared parameters and receives a structured response. When `endpoint` is absent, the intent is a **semantic intent** — the runtime uses the description for capability matching and executes via web automation or other means.
 
@@ -218,9 +225,9 @@ Example:
 
 ```json
 {
-  "name": "tip_hosted_checkout",
-  "description": "Send a tip via a hosted payment page. Creates a one-time checkout session. Returns a payment URL the user visits to complete payment.",
-  "endpoint": "/api/checkout/tip",
+  "name": "tip_stripe",
+  "description": "Send a tip. Creates a one-time checkout session. Returns a payment URL the user visits to complete payment.",
+  "endpoint": "/api/stripe/tip",
   "method": "POST",
   "parameters": {
     "amount": {
@@ -231,9 +238,9 @@ Example:
   },
   "returns": {
     "type": "object",
-    "description": "Checkout session",
+    "description": "Hosted checkout session",
     "properties": {
-      "url": { "type": "string", "description": "Hosted checkout URL for the user to complete payment" },
+      "url": { "type": "string", "description": "Payment URL for the user to complete payment" },
       "session_id": { "type": "string", "description": "Session identifier for tracking" }
     }
   }
@@ -242,30 +249,117 @@ Example:
 
 ### 4.4 Bounty Object
 
-Defines the economic terms for completing an intent.
+Defines what the **provider pays the runtime** for successfully completing an intent. This acts as an advertisement — a signal to agent runtimes that routing traffic here is economically rewarded.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `type` | string | **yes** | Bounty model. Currently only `"cpa"` (cost per action). |
-| `rate` | number | **yes** | Payment amount per successful completion. In the specified currency. |
+| `rate` | number | **yes** | Payment amount the provider pays per successful completion. In the specified currency. |
 | `currency` | string | **yes** | Payment currency. Currently `"USDC"`. |
-| `splits` | object | no | Revenue distribution. See §4.4.1. |
+| `splits` | object | no | How the payment is distributed among runtime parties. See §4.4.1. |
 
-**Bounty resolution order:** Intent-level bounty → Manifest-level bounty → No bounty (runtime default economics)
+**Bounty resolution order:** Intent-level bounty → Manifest-level bounty → No bounty
 
 #### 4.4.1 Splits Object
 
-Optional revenue distribution among parties.
+Optional revenue distribution indicating how the provider's bounty should be divided among the parties that facilitated the request.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `creator` | number | Provider's share. Range: 0.0–1.0 |
-| `platform` | number | Protocol fee. Range: 0.0–1.0 |
 | `orchestrator` | number | Executing agent's share. Range: 0.0–1.0 |
+| `platform` | number | Protocol or marketplace fee. Range: 0.0–1.0 |
+| `referrer` | number | Referring agent or discovery layer share. Range: 0.0–1.0 |
 
 All splits must sum to exactly `1.0`.
 
-### 4.5 Identity Object (Tier 3)
+### 4.5 Price Object
+
+Optional pricing that the provider charges for accessing an intent. Price is what the provider *charges* the user/runtime (required for access). This is different from `bounty`, which is what the provider *pays* the runtime (advertisement), and `incentive`, which is what the runtime optimally pays the provider (performance bonus).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `amount` | number | **yes** | Cost per call in the specified currency. |
+| `currency` | string | **yes** | Currency. `"USD"` for fiat pricing, `"USDC"` for on-chain pricing. |
+| `model` | string | no | Pricing model. `"per_call"` (default), `"per_unit"` (amount × a parameter value), or `"flat"` (one-time access fee). |
+| `unit_param` | string | no | For `per_unit` model: which parameter determines the unit count. Example: `"tokens"` for an LLM API. |
+| `free_tier` | number | no | Number of free calls before pricing applies. Useful for trial access. |
+
+**How the three economic layers interact:**
+
+- **Price:** Provider charges user/runtime for access. (Required)
+- **Bounty:** Provider pays runtime for routing traffic. (Optional advertisement)
+- **Incentive:** Runtime optimally pays provider for fulfillment. (Optional routing preference)
+
+An intent can have any combination of these three fields. For example, a SaaS API might charge a `$0.50` price to the user, offer a `$0.10` bounty to the runtime to encourage routing, and request no incentive.
+
+**Example — a paid SaaS API:**
+
+```json
+{
+  "name": "analyze_document",
+  "description": "AI-powered document analysis. Extracts key clauses, identifies risks, and generates a summary.",
+  "endpoint": "/api/v1/analyze",
+  "method": "POST",
+  "parameters": {
+    "document_url": { "type": "string", "required": true, "description": "URL of the document to analyze" },
+    "analysis_type": { "type": "string", "required": false, "enum": ["summary", "risk", "full"], "default": "full" }
+  },
+  "price": {
+    "amount": 0.50,
+    "currency": "USD",
+    "model": "per_call"
+  }
+}
+```
+
+**Example — usage-based pricing:**
+
+```json
+{
+  "name": "generate_images",
+  "description": "Generate images from text descriptions. Higher count costs proportionally more.",
+  "endpoint": "/api/v1/generate",
+  "method": "POST",
+  "parameters": {
+    "prompt": { "type": "string", "required": true },
+    "count": { "type": "integer", "required": false, "default": 1, "description": "Number of images to generate (1-10)" }
+  },
+  "price": {
+    "amount": 0.10,
+    "currency": "USD",
+    "model": "per_unit",
+    "unit_param": "count"
+  }
+}
+```
+
+**Payment mechanism:** The spec declares the price but does not prescribe how payment is collected. Providers may:
+- Return HTTP 402 with payment instructions when an unpaid request arrives
+- Accept runtime credit receipts or attestations of pre-payment
+- Require a subscription (via a separate payment intent) that grants access
+- Accept direct USDC transfers to the `payout_address`
+
+The runtime is responsible for presenting the cost to the user before executing a priced intent and obtaining appropriate approval through the supervision layer.
+
+### 4.6 Incentive Object
+
+Optional suggested performance incentive. This specifies what the provider suggests a runtime optimally pay them for successfully fulfilling the intent. 
+
+This is standard B2B operational language. It implies optional encouragement rather than contractual obligation, and does not carry the regulatory weight of a "commission" or "fee." 
+
+**Important:** The `incentive` field is merely a *suggestion*. 
+- A provider does not need to specify an incentive to receive one.
+- Runtimes can decide independently to pay an incentive to a provider (organically) for delivering high compute efficiency.
+- Runtimes can choose to pay an incentive *higher* than the suggested rate (e.g., to reward exceptional privacy or speed).
+- Runtimes can pay incentives *on top of* a required price.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | **yes** | Incentive model. Currently only `"cpa"` (cost per action). |
+| `rate` | number | **yes** | Suggested incentive amount. |
+| `currency` | string | **yes** | Incentive currency. Currently `"USDC"`. |
+
+### 4.7 Identity Object (Tier 3)
 
 Optional cryptographic identity for authenticated provider integration.
 
@@ -312,7 +406,7 @@ The `description` field is the most important field in the manifest. Agent runti
 
 ### Do
 
-- **Be specific:** "Search our catalog of 50,000+ electronics, home goods, and clothing items by keyword, brand, or category. Returns name, price, rating, stock status, and delivery estimate."
+- **Be specific:** "Search our catalog of 50,000+ electronics, home goods, and clothing items by keyword, brand, or category. Returns name, price, rating, stock status, and estimated delivery estimate."
 - **Describe the output:** "Returns the top 20 matching products with thumbnail images, prices, and average ratings."
 - **Include scope boundaries:** "Searches only in-stock items from US warehouses. Does not include marketplace seller listings."
 - **Use natural language:** Write as if explaining the capability to a colleague.
@@ -454,34 +548,45 @@ This spec defines version `"1.0"`.
 
 ---
 
-## 9. Payment Intents
+## 9. Economic Flows
 
-The agent.json spec distinguishes between two kinds of economic flow:
+The agent.json spec distinguishes between three kinds of economic flow:
 
-### 9.1 Bounty Payments (runtime → provider)
+### 9.1 Bounties (provider → runtime)
 
-The `bounty` field defines payments the **runtime** makes to the **provider** for completing an intent. These are settled through the runtime's settlement layer (typically USDC on Base L2, sent to the `payout_address`). The provider doesn't handle any payment processing — the runtime handles it.
+The `bounty` field defines payments the **provider** makes to the **runtime** for successfully completing an intent. This acts as an advertisement — a signal to agent runtimes that routing traffic to this provider is economically rewarded. 
 
-This is the default economic model: the user pays the runtime, the runtime pays the provider.
+The runtime decides whether resolving user requests to this provider is appropriate, and if completed, the provider owes the runtime the bounty amount.
 
-### 9.2 Payment Intents (user → provider)
+### 9.2 Incentives (runtime → provider)
 
-Some intents involve a **user-facing payment** — the intent itself creates a payment flow where the user pays the provider directly. Common examples: tipping, purchasing, donating, subscribing.
+The `incentive` field defines suggested payments the **runtime** makes to the **provider** for fulfilling an intent (e.g. for having efficient, high-quality, or privacy-respecting endpoints that save the runtime compute costs or benefit the user).
 
-The pattern:
+The provider suggests an incentive rate in the manifest. The runtime evaluates this and decides independently whether to honor it. 
+
+Because it is an open framework:
+- Runtimes can organically pay incentives to providers who never requested one.
+- Runtimes can pay *more* than the suggested incentive to reward specific traits (e.g., a privacy-focused algorithm rewarding providers who don't log data).
+- Runtimes can pay incentives on top of a required `price`.
+
+### 9.3 Prices / Payment Intents (user → provider)
+
+The `price` field (or an intent with a payment `endpoint`) defines what the **user** pays the **provider** directly for access or goods. This is independent of the runtime's economics. The runtime's job is to facilitate the user's payment to the provider.
+
+The pattern for a payment intent:
 
 ```
 agent.json (declaration)  →  API endpoint (execution)  →  Payment provider (settlement)
   "what can I do?"           "validate & create"          "collect payment"
 ```
 
-Example — a hosted checkout tipping intent (e.g. Stripe, Coinbase Commerce, PayPal):
+Example — a hosted checkout tipping intent:
 
 ```json
 {
-  "name": "tip_hosted_checkout",
-  "description": "Send a tip to this creator. Creates a one-time checkout session. The user completes payment on the provider-hosted page.",
-  "endpoint": "/api/checkout/tip",
+  "name": "tip_stripe",
+  "description": "Send a tip to this creator. Creates a one-time checkout session. The user completes payment on the hosted page.",
+  "endpoint": "/api/stripe/tip",
   "method": "POST",
   "parameters": {
     "amount": {
@@ -492,9 +597,10 @@ Example — a hosted checkout tipping intent (e.g. Stripe, Coinbase Commerce, Pa
   },
   "returns": {
     "type": "object",
+    "description": "Hosted checkout session",
     "properties": {
-      "url": { "type": "string", "description": "Hosted checkout URL" },
-      "session_id": { "type": "string", "description": "Checkout session ID" }
+      "url": { "type": "string", "description": "Payment URL for the user to complete payment" },
+      "session_id": { "type": "string", "description": "Session identifier for tracking" }
     }
   }
 }
@@ -516,26 +622,26 @@ Example — a crypto-native tipping intent:
 }
 ```
 
-### 9.3 Key Differences
+### 9.4 Key Differences
 
-| | Bounty Payment | Payment Intent |
-|--|----------------|----------------|
-| **Who pays** | Runtime (on behalf of user) | User directly |
-| **Settlement** | USDC to `payout_address` | Any payment rail (Stripe, crypto, etc.) |
-| **Declared via** | `bounty` field | Intent with `endpoint` or `payout_address` |
-| **Provider handles payment** | No | Yes (server-side) |
-| **Use case** | Rewarding providers for completing tasks | User-facing transactions (purchases, tips, subscriptions) |
+| | Price / Payment Intent | Bounty | Incentive |
+|--|----------------|----------------|----------------|
+| **Direction** | User → Provider | Provider → Runtime | Runtime → Provider |
+| **Purpose** | Gating access / buying goods | Advertising / routing acquisition | Performance / fulfillment reward |
+| **Required** | Yes (provider blocks access without it) | No (provider's choice) | No (runtime's choice to honor) |
+| **Declared via** | `price` field or `endpoint` | `bounty` field | `incentive` field |
+| **Settlement** | Any payment rail (fiat, crypto) | Typically USDC via Smart Contract | Typically USDC via Smart Contract |
 
-Both can coexist in the same manifest. A service can receive bounty payments for search intents (the runtime pays for agent routing) and offer payment intents for purchases (the user pays for goods).
+All three can coexist in the same manifest. A service can receive user payments for API calls (`price`), offer a routing bounty to agents who bring traffic (`bounty`), and request an operational performance payment from the runtime for efficiency (`incentive`).
 
-### 9.4 Payment Rail Agnosticism
+### 9.5 Payment Rail Agnosticism
 
 The spec intentionally does not mandate a specific payment rail for payment intents. The `payout_address` field and bounty system use USDC on Base L2, but payment intents can use any provider:
 
-- **Stripe** — returns a Checkout URL
-- **Coinbase Commerce** — returns a hosted payment page URL
-- **Direct crypto transfer** — agent reads the wallet address and initiates a transfer
-- **PayPal, Square, or any other provider** — as long as the endpoint returns a payment URL or structured response
+- **Fiat Processors** — returns a hosted checkout session URL
+- **Crypto Commerce** — returns a hosted crypto payment page URL
+- **Native Web3** — returns a blockchain transaction request
+- **Any other custom gateway** — as long as the endpoint returns a payment URL or structured response
 
 This is the "competitive marketplace for financial services" described in the agent internet papers. No single payment provider is privileged. The agent.json declares the capability; the provider chooses how to settle.
 
@@ -549,8 +655,8 @@ This is the "competitive marketplace for financial services" described in the ag
 - **Intent descriptions are untrusted input.** Runtimes should not execute intent descriptions as code or use them in contexts where injection is possible.
 - **Manifests can change.** A provider can modify their manifest at any time. Runtimes should re-fetch periodically and handle changes gracefully (new intents, removed intents, changed bounties).
 - **Endpoint URLs must be same-origin.** When an intent declares an `endpoint`, runtimes should verify the endpoint resolves to the same origin as the manifest. A manifest at `example.com` should not declare endpoints at `evil.com`. Relative paths (e.g., `/api/stripe/tip`) are resolved against the manifest's origin.
-- **Payment intent URLs are user-facing.** When a payment intent returns a URL (e.g., a Stripe Checkout URL), runtimes should present it to the user through the supervision layer — not navigate to it silently. Payment URLs should trigger the runtime's APPROVE or CONFIRM supervision level.
-- **API secrets never appear in the manifest.** The manifest is public. All secrets (Stripe keys, API tokens, signing keys) live server-side in the endpoint implementation. The manifest only declares what's possible, not how it's authenticated internally.
+- **Payment intent URLs are user-facing.** When a payment intent returns a URL (e.g., a hosted checkout URL), runtimes should present it to the user through the supervision layer — not navigate to it silently. Payment URLs should trigger the runtime's APPROVE or CONFIRM supervision level.
+- **API secrets never appear in the manifest.** The manifest is public. All secrets (private keys, API tokens, signing keys) live server-side in the endpoint implementation. The manifest only declares what's possible, not how it's authenticated internally.
 
 ---
 

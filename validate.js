@@ -118,6 +118,11 @@ function validate(manifest, sourceUrl) {
     validateBounty(manifest.bounty, "manifest-level", errors, warnings);
   }
 
+  // incentive (optional, manifest-level)
+  if (manifest.incentive !== undefined) {
+    validateIncentive(manifest.incentive, "manifest-level", errors, warnings);
+  }
+
   // intents (optional)
   if (manifest.intents !== undefined) {
     if (!Array.isArray(manifest.intents)) {
@@ -144,6 +149,7 @@ function validate(manifest, sourceUrl) {
     "identity",
     "intents",
     "bounty",
+    "incentive",
   ];
   for (const key of Object.keys(manifest)) {
     if (!knownFields.includes(key)) {
@@ -278,9 +284,65 @@ function validateIntent(intent, index, nameSet, errors, warnings) {
     }
   }
 
+  // price (optional)
+  if (intent.price !== undefined) {
+    validatePrice(intent.price, `${prefix}.price`, errors, warnings);
+  }
+
   // bounty (optional, intent-level)
   if (intent.bounty !== undefined) {
     validateBounty(intent.bounty, `${prefix}.bounty`, errors, warnings);
+  }
+
+  // incentive (optional, intent-level)
+  if (intent.incentive !== undefined) {
+    validateIncentive(intent.incentive, `${prefix}.incentive`, errors, warnings);
+  }
+}
+
+function validatePrice(price, path, errors, warnings) {
+  if (typeof price !== "object" || price === null) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  if (price.amount === undefined) {
+    errors.push(`${path}: missing required field "amount"`);
+  } else if (typeof price.amount !== "number" || price.amount < 0) {
+    errors.push(`${path}: "amount" must be a non-negative number`);
+  }
+
+  const VALID_PRICE_CURRENCIES = ["USD", "USDC"];
+  if (!price.currency) {
+    errors.push(`${path}: missing required field "currency"`);
+  } else if (!VALID_PRICE_CURRENCIES.includes(price.currency)) {
+    errors.push(
+      `${path}: invalid currency "${price.currency}". Must be one of: ${VALID_PRICE_CURRENCIES.join(", ")}`
+    );
+  }
+
+  const VALID_PRICE_MODELS = ["per_call", "per_unit", "flat"];
+  if (price.model !== undefined) {
+    if (!VALID_PRICE_MODELS.includes(price.model)) {
+      errors.push(
+        `${path}: invalid model "${price.model}". Must be one of: ${VALID_PRICE_MODELS.join(", ")}`
+      );
+    }
+    if (price.model === "per_unit" && !price.unit_param) {
+      errors.push(
+        `${path}: model is "per_unit" but "unit_param" is not set. Specify which parameter determines the unit count.`
+      );
+    }
+  }
+
+  if (price.unit_param !== undefined && typeof price.unit_param !== "string") {
+    errors.push(`${path}: "unit_param" must be a string`);
+  }
+
+  if (price.free_tier !== undefined) {
+    if (typeof price.free_tier !== "number" || price.free_tier < 0 || !Number.isInteger(price.free_tier)) {
+      errors.push(`${path}: "free_tier" must be a non-negative integer`);
+    }
   }
 }
 
@@ -348,7 +410,7 @@ function validateSplits(splits, path, errors, warnings) {
     return;
   }
 
-  const validKeys = ["creator", "platform", "orchestrator"];
+  const validKeys = ["orchestrator", "platform", "referrer"];
   let sum = 0;
 
   for (const [key, value] of Object.entries(splits)) {
@@ -366,6 +428,35 @@ function validateSplits(splits, path, errors, warnings) {
   if (Math.abs(sum - 1.0) > 0.001) {
     errors.push(
       `${path}: splits must sum to 1.0 (currently ${sum.toFixed(3)})`
+    );
+  }
+}
+
+function validateIncentive(incentive, path, errors, warnings) {
+  if (typeof incentive !== "object" || incentive === null) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  if (!incentive.type) {
+    errors.push(`${path}: missing required field "type"`);
+  } else if (!VALID_BOUNTY_TYPES.includes(incentive.type)) {
+    errors.push(
+      `${path}: invalid incentive type "${incentive.type}". Must be one of: ${VALID_BOUNTY_TYPES.join(", ")}`
+    );
+  }
+
+  if (incentive.rate === undefined) {
+    errors.push(`${path}: missing required field "rate"`);
+  } else if (typeof incentive.rate !== "number" || incentive.rate < 0) {
+    errors.push(`${path}: "rate" must be a non-negative number`);
+  }
+
+  if (!incentive.currency) {
+    errors.push(`${path}: missing required field "currency"`);
+  } else if (!VALID_CURRENCIES.includes(incentive.currency)) {
+    errors.push(
+      `${path}: invalid currency "${incentive.currency}". Must be one of: ${VALID_CURRENCIES.join(", ")}`
     );
   }
 }
