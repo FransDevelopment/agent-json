@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "origin": "creator.example.com",
+  "payout_address": "0x0000000000000000000000000000000000000000",
+  "display_name": "Example Creator",
+  "description": "Independent content creator. Tips and donations welcome via hosted checkout or crypto.",
+  "intents": [
+    {
+      "name": "tip_hosted_checkout",
+      "description": "Send a tip via a hosted payment page (e.g. Stripe, Coinbase Commerce). Creates a one-time checkout session. Returns a payment URL the user visits to complete payment. Minimum $5.",
+      "endpoint": "/api/checkout/tip",
+      "method": "POST",
+      "parameters": {
+        "amount": {
+          "type": "number",
+          "required": true,
+          "description": "Tip amount in USD (minimum $5)"
+        },
+        "message": {
+          "type": "string",
+          "required": false,
+          "description": "Optional message to include with the tip"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Checkout session with payment URL",
+        "properties": {
+          "url": { "type": "string", "description": "Checkout URL for the user to complete payment" },
+          "session_id": { "type": "string", "description": "Checkout session identifier for tracking" }
+        }
+      }
+    },
+    {
+      "name": "tip_crypto",
+      "description": "Send a tip directly to the creator's wallet via USDC transfer. The destination address is the payout_address in this manifest. No API call needed — read the address and initiate a direct transfer.",
+      "parameters": {
+        "amount": {
+          "type": "number",
+          "required": true,
+          "description": "Tip amount in USDC"
+        }
+      }
+    },
+    {
+      "name": "get_content",
+      "description": "Browse the creator's published content. Returns a list of posts with titles, dates, and preview text.",
+      "endpoint": "/api/content",
+      "method": "GET",
+      "parameters": {
+        "category": {
+          "type": "string",
+          "required": false,
+          "enum": ["articles", "videos", "podcasts"]
+        },
+        "max_results": {
+          "type": "integer",
+          "required": false,
+          "default": 10
+        }
+      },
+      "returns": {
+        "type": "array",
+        "description": "List of content items with title, date, category, and preview"
+      }
+    }
+  ],
+  "bounty": {
+    "type": "cpa",
+    "rate": 0.10,
+    "currency": "USDC"
+  }
+}

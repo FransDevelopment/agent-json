@@ -1,0 +1,25 @@
+{
+  "name": "agent-json-validate",
+  "version": "1.0.0",
+  "description": "Validator for the agent.json capability manifest specification",
+  "main": "validate.js",
+  "bin": {
+    "agent-json-validate": "./validate.js"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": [
+    "agent",
+    "agent-json",
+    "manifest",
+    "validator",
+    "agent-internet",
+    "capability"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/agent-json"
+  }
+}

@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentjson.org/schema/v1.0/agent.json",
+  "title": "agent.json",
+  "description": "Capability manifest for the agent internet. Declares what a service offers to AI agents, how to interact with it, and where to send payments.",
+  "type": "object",
+  "required": ["version", "origin", "payout_address"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Manifest schema version."
+    },
+    "origin": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$",
+      "description": "The domain this manifest represents. Must match the domain serving the file.",
+      "examples": ["example.com", "shop.example.com"]
+    },
+    "payout_address": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Wallet address for receiving payments. Currently USDC on Base L2.",
+      "examples": ["0x1234567890abcdef1234567890abcdef12345678"]
+    },
+    "display_name": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Human-readable service name."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Brief description of the service. Used for semantic discovery."
+    },
+    "identity": {
+      "$ref": "#/$defs/Identity"
+    },
+    "intents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Intent"
+      },
+      "description": "Array of capabilities the service offers to agents."
+    },
+    "bounty": {
+      "$ref": "#/$defs/Bounty",
+      "description": "Default economic terms for all intents. Can be overridden per-intent."
+    }
+  },
+  "$defs": {
+    "Identity": {
+      "type": "object",
+      "description": "Cryptographic identity for Tier 3 authenticated integration.",
+      "additionalProperties": false,
+      "properties": {
+        "did": {
+          "type": "string",
+          "pattern": "^did:[a-z]+:.+$",
+          "description": "Decentralized Identifier.",
+          "examples": ["did:web:example.com"]
+        },
+        "public_key": {
+          "type": "string",
+          "description": "Base64url-encoded Ed25519 public key."
+        }
+      }
+    },
+    "Intent": {
+      "type": "object",
+      "required": ["name", "description"],
+      "additionalProperties": false,
+      "description": "A single capability the service offers to agents.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "maxLength": 64,
+          "description": "Machine-readable identifier. Must be snake_case, unique within the manifest.",
+          "examples": ["search_products", "add_to_cart", "complete_purchase", "tip_hosted_checkout"]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 500,
+          "description": "Natural-language description of the capability. Used for semantic matching — be specific."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "API endpoint URL for direct execution. Absolute URL or path relative to origin. When present, the runtime calls this endpoint directly instead of web automation.",
+          "examples": ["/api/stripe/tip", "https://api.example.com/v1/search"]
+        },
+        "method": {
+          "type": "string",
+          "enum": ["GET", "POST", "PUT", "DELETE"],
+          "default": "POST",
+          "description": "HTTP method for the endpoint. Required when endpoint is present."
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Parameter"
+          },
+          "description": "Map of parameter names to parameter definitions. For GET: query params. For POST/PUT: JSON body."
+        },
+        "returns": {
+          "$ref": "#/$defs/Returns",
+          "description": "Description of the response shape. Helps agents understand what to expect."
+        },
+        "bounty": {
+          "$ref": "#/$defs/Bounty",
+          "description": "Per-intent bounty override. Takes priority over manifest-level bounty."
+        }
+      }
+    },
+    "Returns": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Description of what an intent returns.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["object", "array", "string"],
+          "description": "Top-level response type."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Human-readable description of the response."
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          },
+          "description": "For object type: map of property names to type and description."
+        }
+      }
+    },
+    "Parameter": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "description": "An input parameter for an intent.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "integer", "number", "boolean", "array", "object"],
+          "description": "Data type of the parameter."
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this parameter is required."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Human-readable description of the parameter."
+        },
+        "enum": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Exhaustive list of allowed values."
+        },
+        "default": {
+          "description": "Default value when not provided by the agent."
+        }
+      }
+    },
+    "Bounty": {
+      "type": "object",
+      "required": ["type", "rate", "currency"],
+      "additionalProperties": false,
+      "description": "Economic terms for completing an intent.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["cpa"],
+          "description": "Bounty model. Currently only 'cpa' (cost per action)."
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Payment amount per successful completion."
+        },
+        "currency": {
+          "type": "string",
+          "enum": ["USDC"],
+          "description": "Payment currency."
+        },
+        "splits": {
+          "$ref": "#/$defs/Splits"
+        }
+      }
+    },
+    "Splits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Revenue distribution among parties. All values must sum to 1.0.",
+      "properties": {
+        "creator": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Provider's share."
+        },
+        "platform": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Protocol fee."
+        },
+        "orchestrator": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Executing agent's share."
+        }
+      }
+    }
+  }
+}

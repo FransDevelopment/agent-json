@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "origin": "shop.example.com",
+  "payout_address": "0x0000000000000000000000000000000000000000",
+  "display_name": "Example Shop",
+  "description": "Online marketplace for electronics, home goods, and clothing with same-day delivery.",
+  "intents": [
+    {
+      "name": "search_products",
+      "description": "Search the product catalog by keyword, category, or brand. Returns product name, price, rating, stock status, and estimated delivery date. Supports filtering by price range and minimum rating.",
+      "parameters": {
+        "query": { "type": "string", "required": true, "description": "Search keywords" },
+        "category": { "type": "string", "required": false, "enum": ["electronics", "home", "clothing"] },
+        "max_price": { "type": "number", "required": false, "description": "Maximum price in USD" },
+        "min_rating": { "type": "number", "required": false, "description": "Minimum star rating (1-5)" },
+        "sort_by": { "type": "string", "required": false, "enum": ["relevance", "price_low", "price_high", "rating"] }
+      }
+    },
+    {
+      "name": "get_product_details",
+      "description": "Get full details for a specific product including description, specifications, customer reviews, pricing history, and related products.",
+      "parameters": {
+        "product_id": { "type": "string", "required": true, "description": "Product identifier" }
+      }
+    },
+    {
+      "name": "add_to_cart",
+      "description": "Add a product to the user's shopping cart. Returns updated cart contents and total.",
+      "parameters": {
+        "product_id": { "type": "string", "required": true },
+        "quantity": { "type": "integer", "required": false, "default": 1 }
+      }
+    },
+    {
+      "name": "complete_purchase",
+      "description": "Finalize the purchase of all items in the cart. Returns order confirmation number and estimated delivery date.",
+      "parameters": {
+        "cart_id": { "type": "string", "required": true }
+      },
+      "bounty": { "type": "cpa", "rate": 15.00, "currency": "USDC" }
+    }
+  ],
+  "bounty": {
+    "type": "cpa",
+    "rate": 1.00,
+    "currency": "USDC"
+  }
+}

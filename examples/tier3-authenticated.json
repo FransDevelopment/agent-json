@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "origin": "api.example.com",
+  "payout_address": "0x0000000000000000000000000000000000000000",
+  "display_name": "Example API",
+  "description": "Financial data API providing real-time stock quotes, company fundamentals, and market news.",
+  "identity": {
+    "did": "did:web:api.example.com",
+    "public_key": "dGhpcyBpcyBhIHBsYWNlaG9sZGVyIHB1YmxpYyBrZXk"
+  },
+  "intents": [
+    {
+      "name": "get_stock_quote",
+      "description": "Get real-time stock price and trading data for a given ticker symbol. Returns current price, day change, volume, market cap, and 52-week range.",
+      "parameters": {
+        "symbol": { "type": "string", "required": true, "description": "Ticker symbol (e.g., AAPL, GOOGL)" }
+      }
+    },
+    {
+      "name": "get_company_fundamentals",
+      "description": "Get company financial fundamentals including P/E ratio, EPS, revenue, profit margin, dividend yield, and sector classification.",
+      "parameters": {
+        "symbol": { "type": "string", "required": true },
+        "period": { "type": "string", "required": false, "enum": ["quarterly", "annual"], "default": "annual" }
+      },
+      "bounty": { "type": "cpa", "rate": 0.10, "currency": "USDC" }
+    },
+    {
+      "name": "search_market_news",
+      "description": "Search recent market news and analysis by keyword, ticker, or sector. Returns headlines, summaries, sources, and publication timestamps.",
+      "parameters": {
+        "query": { "type": "string", "required": true },
+        "max_results": { "type": "integer", "required": false, "default": 10 }
+      }
+    }
+  ],
+  "bounty": {
+    "type": "cpa",
+    "rate": 0.05,
+    "currency": "USDC"
+  }
+}

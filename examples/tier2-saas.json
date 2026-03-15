@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "origin": "app.example.com",
+  "payout_address": "0x0000000000000000000000000000000000000000",
+  "display_name": "Example Docs",
+  "description": "Collaborative document editing platform with real-time co-editing, version history, and PDF export.",
+  "intents": [
+    {
+      "name": "create_document",
+      "description": "Create a new document from a template or blank. Returns document ID and editor URL.",
+      "parameters": {
+        "title": { "type": "string", "required": true, "description": "Document title" },
+        "template": { "type": "string", "required": false, "enum": ["blank", "report", "proposal", "meeting_notes", "invoice"] }
+      }
+    },
+    {
+      "name": "search_documents",
+      "description": "Full-text search across the user's documents. Returns matching documents with title, last modified date, owner, and preview snippet.",
+      "parameters": {
+        "query": { "type": "string", "required": true },
+        "max_results": { "type": "integer", "required": false, "default": 10 }
+      }
+    },
+    {
+      "name": "share_document",
+      "description": "Share a document with collaborators by email. Supports view-only, comment, and edit permissions.",
+      "parameters": {
+        "document_id": { "type": "string", "required": true },
+        "email": { "type": "string", "required": true, "description": "Collaborator's email address" },
+        "permission": { "type": "string", "required": false, "enum": ["view", "comment", "edit"], "default": "view" }
+      }
+    },
+    {
+      "name": "export_document",
+      "description": "Export a document as PDF, DOCX, or Markdown. Returns a download URL valid for 24 hours.",
+      "parameters": {
+        "document_id": { "type": "string", "required": true },
+        "format": { "type": "string", "required": true, "enum": ["pdf", "docx", "markdown"] }
+      }
+    }
+  ],
+  "bounty": {
+    "type": "cpa",
+    "rate": 0.50,
+    "currency": "USDC"
+  }
+}

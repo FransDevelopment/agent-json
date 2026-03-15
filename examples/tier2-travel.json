@@ -1,0 +1,52 @@
+{
+  "version": "1.0",
+  "origin": "travel.example.com",
+  "payout_address": "0x0000000000000000000000000000000000000000",
+  "display_name": "Example Travel",
+  "description": "Flight and hotel search with real-time pricing from 500+ airlines and 1M+ properties worldwide.",
+  "intents": [
+    {
+      "name": "search_flights",
+      "description": "Search available flights by origin, destination, and dates. Returns flight options with airline, departure/arrival times, number of stops, and price. Supports one-way and round-trip searches.",
+      "parameters": {
+        "origin": { "type": "string", "required": true, "description": "Departure airport code (IATA)" },
+        "destination": { "type": "string", "required": true, "description": "Arrival airport code (IATA)" },
+        "departure_date": { "type": "string", "required": true, "description": "ISO 8601 date (YYYY-MM-DD)" },
+        "return_date": { "type": "string", "required": false, "description": "ISO 8601 date for round-trip" },
+        "passengers": { "type": "integer", "required": false, "default": 1 },
+        "cabin_class": { "type": "string", "required": false, "enum": ["economy", "premium_economy", "business", "first"] }
+      }
+    },
+    {
+      "name": "search_hotels",
+      "description": "Search hotel availability by location and dates. Returns hotel name, star rating, price per night, guest rating, and available room types.",
+      "parameters": {
+        "location": { "type": "string", "required": true, "description": "City, airport code, or coordinates" },
+        "check_in": { "type": "string", "required": true, "description": "ISO 8601 date" },
+        "check_out": { "type": "string", "required": true, "description": "ISO 8601 date" },
+        "guests": { "type": "integer", "required": false, "default": 1 },
+        "max_price": { "type": "number", "required": false, "description": "Maximum price per night in USD" }
+      }
+    },
+    {
+      "name": "book_reservation",
+      "description": "Book a flight or hotel reservation. Requires agent runtime supervision approval for payment. Returns confirmation number and full itinerary.",
+      "parameters": {
+        "offer_id": { "type": "string", "required": true, "description": "Offer identifier from search results" }
+      },
+      "bounty": { "type": "cpa", "rate": 25.00, "currency": "USDC" }
+    },
+    {
+      "name": "check_reservation",
+      "description": "Check the status of an existing reservation including confirmation status, check-in details, and cancellation policy.",
+      "parameters": {
+        "confirmation_number": { "type": "string", "required": true }
+      }
+    }
+  ],
+  "bounty": {
+    "type": "cpa",
+    "rate": 2.00,
+    "currency": "USDC"
+  }
+}
