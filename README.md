@@ -4,7 +4,7 @@ The open capability manifest for the agent internet.
 
 `agent.json` is a machine-readable file that a service publishes to declare what it offers to AI agents — its capabilities, inputs, and payment terms.
 
-Just as `robots.txt` tells search engines how to crawl a site, and `.well-known/apple-app-site-association` links websites to mobile apps, `agent.json` tells AI agents exactly how to interact with your service. It replaces the need for agents to blindly scrape pages or guess API endpoints.
+Just as `robots.txt` tells search engines how to crawl a site, and `.well-known/security.txt` declares security disclosure policies, `agent.json` tells AI agents exactly how to interact with your service. It replaces the need for agents to blindly scrape pages or guess API endpoints.
 
 ## Why does this exist?
 
@@ -76,9 +76,9 @@ Some intents involve the user paying the provider directly — tips, purchases, 
 
 ```json
 {
-  "name": "tip_stripe",
+  "name": "tip_checkout",
   "description": "Send a tip. Creates a hosted checkout session.",
-  "endpoint": "/api/stripe/tip",
+  "endpoint": "/api/checkout/tip",
   "method": "POST",
   "parameters": {
     "amount": { "type": "number", "required": true, "description": "Tip amount in USD" }
@@ -202,9 +202,25 @@ The protocol supports progressive integration. Start minimal, add detail as your
 | **1 — Minimal** | `version` + `origin` + `payout_address` | Interact via web automation. | Pay bounties for routing |
 | **2 — Structured** | Add `intents` with descriptions and parameters | Precise capability matching. Better routing. | Pay bounties + receive runtime incentives |
 | **2+ — Direct API** | Add `endpoint` and `method` to intents | Agents call your API directly. No browser needed. | Charge users prices + receive runtime incentives |
-| **3 — Authenticated** | Add `identity` with cryptographic keys | Signed responses, on-chain settlement, verified provider identity. | All of the above + on-chain settlement |
+| **3 — Authenticated** | Add `identity` metadata | Runtime-specific trust policies and richer provider identity. | All of the above + optional runtime-specific trust flows |
 
 Start at Tier 1. Add detail as your integration matures. Each tier earns more because each tier provides more value to agents and their users.
+
+## Extensions
+
+The core manifest stays small on purpose. Runtime- or vendor-specific metadata should live under an `extensions` object, for example:
+
+```json
+{
+  "extensions": {
+    "air": {
+      "custom_field": true
+    }
+  }
+}
+```
+
+Runtimes should ignore unknown extension namespaces. Signing and verification behavior are not standardized in `v1.0`; runtimes that support them should document that behavior in their own extension namespace.
 
 ## Validator
 
@@ -265,15 +281,17 @@ const isValid = ajv.validate(schema, manifest);
 
 **Required fields:** `version`, `origin`, `payout_address`
 
-**Optional fields:** `display_name`, `description`, `identity`, `intents`, `bounty`
+**Optional fields:** `display_name`, `description`, `extensions`, `identity`, `intents`, `bounty`, `incentive`
 
-**Intent fields:** `name`, `description`, `endpoint`, `method`, `parameters`, `returns`, `price`, `bounty`
+**Intent fields:** `name`, `description`, `extensions`, `endpoint`, `method`, `parameters`, `returns`, `price`, `bounty`, `incentive`
 
 **Hosting:** `https://{domain}/.well-known/agent.json` (preferred) or `https://{domain}/agent.json` (fallback)
 
 **Discovery:** Agent runtimes fetch the manifest when first interacting with a domain. No registration needed — publishing the file is sufficient.
 
 **Bounty resolution:** Intent-level bounty > Manifest-level bounty > No bounty
+
+**Extensibility:** Vendor-specific metadata should live under an `extensions` object (e.g., `"extensions": { "air": { ... } }`). Legacy `x-` or `x_` prefixed fields are also tolerated. Runtimes must gracefully ignore unknown fields to ensure forward compatibility.
 
 See [SPECIFICATION.md](./SPECIFICATION.md) for the complete reference.
 

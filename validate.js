@@ -108,6 +108,12 @@ function validate(manifest, sourceUrl) {
     }
   }
 
+  if (manifest.extensions !== undefined) {
+    if (typeof manifest.extensions !== "object" || manifest.extensions === null || Array.isArray(manifest.extensions)) {
+      errors.push('"extensions" must be an object');
+    }
+  }
+
   // identity (optional)
   if (manifest.identity !== undefined) {
     validateIdentity(manifest.identity, errors, warnings);
@@ -146,13 +152,14 @@ function validate(manifest, sourceUrl) {
     "payout_address",
     "display_name",
     "description",
+    "extensions",
     "identity",
     "intents",
     "bounty",
     "incentive",
   ];
   for (const key of Object.keys(manifest)) {
-    if (!knownFields.includes(key)) {
+    if (!knownFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
       warnings.push(`Unknown top-level field: "${key}"`);
     }
   }
@@ -261,9 +268,15 @@ function validateIntent(intent, index, nameSet, errors, warnings) {
       );
     }
   } else if (intent.endpoint !== undefined) {
-    warnings.push(
-      `${prefix}: "endpoint" is set but "method" is missing. Defaults to POST.`
+    errors.push(
+      `${prefix}: "endpoint" is set but "method" is missing. The public schema requires "method" whenever "endpoint" is declared.`
     );
+  }
+
+  if (intent.extensions !== undefined) {
+    if (typeof intent.extensions !== "object" || intent.extensions === null || Array.isArray(intent.extensions)) {
+      errors.push(`${prefix}: "extensions" must be an object`);
+    }
   }
 
   // parameters (optional)
@@ -297,6 +310,24 @@ function validateIntent(intent, index, nameSet, errors, warnings) {
   // incentive (optional, intent-level)
   if (intent.incentive !== undefined) {
     validateIncentive(intent.incentive, `${prefix}.incentive`, errors, warnings);
+  }
+
+  const knownFields = [
+    "name",
+    "description",
+    "extensions",
+    "endpoint",
+    "method",
+    "parameters",
+    "returns",
+    "price",
+    "bounty",
+    "incentive",
+  ];
+  for (const key of Object.keys(intent)) {
+    if (!knownFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
+      warnings.push(`${prefix}: unknown field "${key}"`);
+    }
   }
 }
 
@@ -415,7 +446,9 @@ function validateSplits(splits, path, errors, warnings) {
 
   for (const [key, value] of Object.entries(splits)) {
     if (!validKeys.includes(key)) {
-      warnings.push(`${path}: unknown split key "${key}"`);
+      if (!key.startsWith("x-") && !key.startsWith("x_")) {
+        warnings.push(`${path}: unknown split key "${key}"`);
+      }
       continue;
     }
     if (typeof value !== "number" || value < 0 || value > 1) {

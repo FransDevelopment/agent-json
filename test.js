@@ -204,6 +204,23 @@ test("rejects invalid HTTP method", () => {
   assert.ok(result.errors.some((e) => e.includes("method")));
 });
 
+test("rejects endpoint without method", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "do_thing",
+        description: "Does a thing via a direct endpoint but omits the method.",
+        endpoint: "/api/thing",
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("method")));
+});
+
 test("warns when method is set without endpoint", () => {
   const result = validate({
     version: "1.0",
@@ -351,6 +368,97 @@ test("accepts intent-level incentive", () => {
     ],
   });
   assert.strictEqual(result.valid, true);
+});
+
+// --- Unit tests: extensibility ---
+
+console.log("\n  Extensibility validation\n");
+
+test("accepts vendor extensions without warnings", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    "x-arcede-reliability": 0.99,
+    "x_custom_metadata": "test",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        "x-vendor-strict": true,
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.strictEqual(result.warnings.length, 0);
+});
+
+test("warns on unknown fields that are not vendor extensions", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    unknown_field: true,
+    intents: [
+      {
+        name: "test_intent",
+        description: "Test intent",
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.strictEqual(result.warnings.length, 1);
+  assert.ok(result.warnings[0].includes("Unknown top-level field"));
+});
+
+test("accepts valid extensions object at root and intent levels", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    extensions: {
+      air: { score: 1 }
+    },
+    intents: [
+      {
+        name: "test_intent",
+        description: "Test intent",
+        extensions: {
+          air: { custom: true }
+        }
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.strictEqual(result.warnings.length, 0);
+});
+
+test("rejects non-object extensions at root level", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    extensions: ["invalid_array"]
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some(e => e.includes('"extensions" must be an object')));
+});
+
+test("rejects non-object extensions at intent level", () => {
+  const result = validate({
+    version: "1.0",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "test_intent",
+        description: "Test intent",
+        extensions: "invalid_string"
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some(e => e.includes('"extensions" must be an object')));
 });
 
 // --- Unit tests: tier detection ---

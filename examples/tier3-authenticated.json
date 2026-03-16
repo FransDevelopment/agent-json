@@ -4,6 +4,11 @@
   "payout_address": "0x0000000000000000000000000000000000000000",
   "display_name": "Example API",
   "description": "Financial data API providing real-time stock quotes, company fundamentals, and market news.",
+  "extensions": {
+    "air": {
+      "verified_provider": true
+    }
+  },
   "identity": {
     "did": "did:web:api.example.com",
     "public_key": "dGhpcyBpcyBhIHBsYWNlaG9sZGVyIHB1YmxpYyBrZXk"
@@ -12,6 +17,11 @@
     {
       "name": "get_stock_quote",
       "description": "Get real-time stock price and trading data for a given ticker symbol. Returns current price, day change, volume, market cap, and 52-week range.",
+      "extensions": {
+        "air": {
+          "latency_sla_ms": 200
+        }
+      },
       "parameters": {
         "symbol": { "type": "string", "required": true, "description": "Ticker symbol (e.g., AAPL, GOOGL)" }
       }

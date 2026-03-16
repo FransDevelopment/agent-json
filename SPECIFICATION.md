@@ -127,9 +127,9 @@ Three fields. Your domain is now discoverable by agent runtimes. Agents interact
 
 Declares specific capabilities. Agent runtimes match user requests to your declared intents using semantic similarity. More precise routing, higher completion rates, better economics.
 
-### Tier 3 — Authenticated (Cryptographic identity)
+### Tier 3 — Authenticated (Identity Metadata)
 
-Extends Tier 2 with a cryptographic identity for verified provider authentication and on-chain settlement.
+Extends Tier 2 with provider identity metadata. Public identity metadata is standardized in v1.0; signing, verification, and runtime-specific trust policies are extension-defined.
 
 ```json
 {
@@ -140,17 +140,19 @@ Extends Tier 2 with a cryptographic identity for verified provider authenticatio
   "description": "Online marketplace for electronics and home goods.",
   "identity": {
     "did": "did:web:example.com",
-    "public_key": "base64url-encoded-Ed25519-public-key"
+    "public_key": "base64url-encoded-public-key"
   },
   "intents": [ ... ],
   "bounty": { ... }
 }
 ```
 
-The `identity` block enables:
-- Cryptographic verification that the manifest was published by the domain owner
-- Signed responses to agent requests (tamper-evident)
-- Direct on-chain settlement without intermediary trust
+The `identity` block provides:
+- A stable provider identifier for runtimes
+- A place to attach public-key material or DID metadata
+- A foundation for runtime-specific trust policies or future standardized signing behavior
+
+Manifest signing and verification are **not** standardized in v1.0. Runtimes that support signed manifests should document that behavior through extensions.
 
 ---
 
@@ -165,9 +167,11 @@ The `identity` block enables:
 | `payout_address` | string | **yes** | Wallet address for receiving payments. Currently USDC on Base L2. Example: `"0x..."` |
 | `display_name` | string | no | Human-readable service name. Used in dashboards and reporting. |
 | `description` | string | no | Brief description of the service. Used for semantic discovery when intents aren't declared. |
-| `identity` | object | no | Cryptographic identity for Tier 3 integration. See §4.5. |
+| `extensions` | object | no | Vendor-specific extension namespaces. Recommended shape: `extensions.<vendor>`. Unknown namespaces must be ignored. |
+| `identity` | object | no | Provider identity metadata for Tier 3 integration. See §4.5. |
 | `intents` | array | no | Array of `Intent` objects declaring available capabilities. See §4.2. |
 | `bounty` | object | no | Default economic terms for all intents. See §4.4. Can be overridden per-intent. |
+| `incentive` | object | no | Default suggested incentive for all intents. See §4.6. Can be overridden per-intent. |
 
 ### 4.2 Intent Object
 
@@ -177,8 +181,9 @@ Each intent represents one capability the service offers to agents.
 |-------|------|----------|-------------|
 | `name` | string | **yes** | Machine-readable identifier. Must be `snake_case`, unique within the manifest. |
 | `description` | string | **yes** | Natural-language description of the capability. This is the primary field used for semantic matching — be specific. |
+| `extensions` | object | no | Vendor-specific extension namespaces for this intent. Recommended shape: `extensions.<vendor>`. Unknown namespaces must be ignored. |
 | `endpoint` | string | no | API endpoint URL for direct execution. Absolute URL or path relative to origin. When present, the runtime calls this endpoint directly instead of using web automation. |
-| `method` | string | no | HTTP method for the endpoint. One of `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`. Required when `endpoint` is present. Default: `"POST"`. |
+| `method` | string | no | HTTP method for the endpoint. One of `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`. Publishers should declare it whenever `endpoint` is present. Runtimes may default to `"POST"` for compatibility. |
 | `parameters` | object | no | Map of parameter names to `Parameter` objects. See §4.3. For `GET` requests, parameters are sent as query strings. For `POST`/`PUT`, as JSON body. |
 | `returns` | object | no | Description of the response shape. See §4.3.1. Helps agents understand what to expect without making a call. |
 | `price` | object | no | What the provider charges to access this intent. See §4.5. When present, the runtime must arrange payment before or during execution. |
@@ -225,9 +230,9 @@ Example:
 
 ```json
 {
-  "name": "tip_stripe",
+  "name": "tip_checkout",
   "description": "Send a tip. Creates a one-time checkout session. Returns a payment URL the user visits to complete payment.",
-  "endpoint": "/api/stripe/tip",
+  "endpoint": "/api/checkout/tip",
   "method": "POST",
   "parameters": {
     "amount": {
@@ -361,12 +366,12 @@ This is standard B2B operational language. It implies optional encouragement rat
 
 ### 4.7 Identity Object (Tier 3)
 
-Optional cryptographic identity for authenticated provider integration.
+Optional provider identity metadata for authenticated provider integration.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `did` | string | no | Decentralized Identifier. Example: `"did:web:example.com"` |
-| `public_key` | string | no | Base64url-encoded Ed25519 public key for signing verification |
+| `public_key` | string | no | Base64url-encoded public key material advertised by the provider |
 
 ---
 
@@ -584,9 +589,9 @@ Example — a hosted checkout tipping intent:
 
 ```json
 {
-  "name": "tip_stripe",
+  "name": "tip_checkout",
   "description": "Send a tip to this creator. Creates a one-time checkout session. The user completes payment on the hosted page.",
-  "endpoint": "/api/stripe/tip",
+  "endpoint": "/api/checkout/tip",
   "method": "POST",
   "parameters": {
     "amount": {
@@ -647,19 +652,61 @@ This is the "competitive marketplace for financial services" described in the ag
 
 ---
 
-## 10. Security Considerations
+## 10. Extensibility & Forward Compatibility
+
+The `agent.json` open standard is designed to evolve cleanly and enable runtimes or consortiums to experiment with new metadata without polluting the core manifest schema.
+
+### 10.1 Vendor Extensions
+
+The preferred extension mechanism is an `extensions` object at the root and intent levels.
+
+Recommended shape:
+
+```json
+{
+  "extensions": {
+    "air": {
+      "custom_field": true
+    }
+  }
+}
+```
+
+Guidance:
+- Use a vendor or runtime namespace under `extensions`, such as `extensions.air`.
+- Runtimes must ignore unknown extension namespaces.
+- Extensions must not be required for a manifest to be considered valid under the core `agent.json` protocol.
+
+Legacy `x-` or `x_` fields may still be tolerated by validators and runtimes for compatibility, but new integrations should prefer `extensions`.
+
+### 10.2 Forward Compatibility
+
+To ensure the ecosystem remains robust across version updates:
+
+- **Runtimes MUST ignore unknown extension namespaces.**
+  If a runtime encounters `extensions.<vendor>` that it does not recognize, it must ignore that namespace and continue processing the manifest.
+
+- **Endpoints remain optional.** 
+  A core tenet of the protocol is that web automation and structured endpoints can coexist. The `endpoint` property is intentionally optional to preserve the AI agent internet's ability to automate standard HTML interfaces when APIs aren't available.
+
+- **`/.well-known/agent.json` is strictly canonical.**
+  Vendor-specific files (e.g., `/.well-known/custom-vendor.json`) should be avoided. All agent capability discovery should map back to the single `agent.json` file. Runtimes may use `x-` extensions inside `agent.json` rather than fragmenting discovery.
+
+---
+
+## 11. Security Considerations
 
 - **Origin verification is mandatory.** Runtimes must reject manifests where the `origin` doesn't match the serving domain.
 - **HTTPS is mandatory.** Runtimes must not fetch manifests over HTTP.
 - **Payout addresses are not validated by the spec.** Runtimes are responsible for verifying that payout addresses are valid for the target settlement network.
 - **Intent descriptions are untrusted input.** Runtimes should not execute intent descriptions as code or use them in contexts where injection is possible.
 - **Manifests can change.** A provider can modify their manifest at any time. Runtimes should re-fetch periodically and handle changes gracefully (new intents, removed intents, changed bounties).
-- **Endpoint URLs must be same-origin.** When an intent declares an `endpoint`, runtimes should verify the endpoint resolves to the same origin as the manifest. A manifest at `example.com` should not declare endpoints at `evil.com`. Relative paths (e.g., `/api/stripe/tip`) are resolved against the manifest's origin.
+- **Endpoint URLs must be same-origin.** When an intent declares an `endpoint`, runtimes should verify the endpoint resolves to the same origin as the manifest. A manifest at `example.com` should not declare endpoints at `evil.com`. Relative paths (e.g., `/api/checkout/tip`) are resolved against the manifest's origin.
 - **Payment intent URLs are user-facing.** When a payment intent returns a URL (e.g., a hosted checkout URL), runtimes should present it to the user through the supervision layer — not navigate to it silently. Payment URLs should trigger the runtime's APPROVE or CONFIRM supervision level.
 - **API secrets never appear in the manifest.** The manifest is public. All secrets (private keys, API tokens, signing keys) live server-side in the endpoint implementation. The manifest only declares what's possible, not how it's authenticated internally.
 
 ---
 
-## 11. License
+## 12. License
 
 This specification is released under the MIT License. Anyone can implement, extend, or build upon it without restriction.

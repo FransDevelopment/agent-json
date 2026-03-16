@@ -10,6 +10,9 @@
         "payout_address"
     ],
     "additionalProperties": false,
+    "patternProperties": {
+        "^x-": {}
+    },
     "properties": {
         "version": {
             "type": "string",
@@ -43,6 +46,10 @@
             "maxLength": 500,
             "description": "Brief description of the service. Used for semantic discovery."
         },
+        "extensions": {
+            "$ref": "#/$defs/Extensions",
+            "description": "Vendor-specific extension namespaces. Runtimes should ignore unknown namespaces."
+        },
         "identity": {
             "$ref": "#/$defs/Identity"
         },
@@ -65,8 +72,11 @@
     "$defs": {
         "Identity": {
             "type": "object",
-            "description": "Cryptographic identity for Tier 3 authenticated integration.",
+            "description": "Provider identity metadata. Signing and verification behavior are not standardized in v1.0.",
             "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
             "properties": {
                 "did": {
                     "type": "string",
@@ -78,7 +88,7 @@
                 },
                 "public_key": {
                     "type": "string",
-                    "description": "Base64url-encoded Ed25519 public key."
+                    "description": "Base64url-encoded public key material advertised by the provider."
                 }
             }
         },
@@ -89,6 +99,9 @@
                 "description"
             ],
             "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
             "description": "A single capability the service offers to agents.",
             "properties": {
                 "name": {
@@ -100,7 +113,7 @@
                         "search_products",
                         "add_to_cart",
                         "complete_purchase",
-                        "tip_stripe"
+                        "tip_checkout"
                     ]
                 },
                 "description": {
@@ -109,11 +122,15 @@
                     "maxLength": 500,
                     "description": "Natural-language description of the capability. Used for semantic matching — be specific."
                 },
+                "extensions": {
+                    "$ref": "#/$defs/Extensions",
+                    "description": "Vendor-specific extension namespaces for this intent. Runtimes should ignore unknown namespaces."
+                },
                 "endpoint": {
                     "type": "string",
                     "description": "API endpoint URL for direct execution. Absolute URL or path relative to origin. When present, the runtime calls this endpoint directly instead of web automation.",
                     "examples": [
-                        "/api/stripe/tip",
+                        "/api/checkout/tip",
                         "https://api.example.com/v1/search"
                     ]
                 },
@@ -151,11 +168,33 @@
                     "$ref": "#/$defs/Incentive",
                     "description": "Per-intent incentive override. Suggested amount the provider requests the runtime pay for fulfilling this intent. Takes priority over manifest-level incentive."
                 }
-            }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "required": [
+                            "endpoint"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "method"
+                        ]
+                    }
+                }
+            ]
+        },
+        "Extensions": {
+            "type": "object",
+            "description": "Open object for vendor-specific extension namespaces, e.g. `extensions.air`.",
+            "additionalProperties": true
         },
         "Returns": {
             "type": "object",
             "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
             "description": "Description of what an intent returns.",
             "properties": {
                 "type": {
@@ -195,6 +234,9 @@
                 "type"
             ],
             "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
             "description": "An input parameter for an intent.",
             "properties": {
                 "type": {
@@ -236,6 +278,9 @@
                 "currency"
             ],
             "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
             "description": "What the provider charges to access an intent.",
             "properties": {
                 "amount": {
@@ -280,6 +325,9 @@
                 "currency"
             ],
             "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
             "description": "What the provider pays the runtime per successful intent completion. Acts as an advertisement to incentivize agent traffic routing.",
             "properties": {
                 "type": {
@@ -314,6 +362,9 @@
                 "currency"
             ],
             "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
             "description": "Suggested amount the provider requests runtimes pay per successful intent fulfillment. Purely opt-in — runtimes decide independently whether and how much to honor.",
             "properties": {
                 "type": {
@@ -340,6 +391,9 @@
         "Splits": {
             "type": "object",
             "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
             "description": "Distribution of the bounty payout among runtime parties. All values must sum to 1.0.",
             "properties": {
                 "orchestrator": {
