@@ -1,11 +1,16 @@
 {
   "name": "agent-json-validate",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Validator for the agent.json capability manifest specification",
   "main": "validate.js",
   "bin": {
-    "agent-json-validate": "./validate.js"
+    "agent-json-validate": "validate.js"
   },
+  "files": [
+    "validate.js",
+    "schema.json",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node test.js"
   },
@@ -15,11 +20,17 @@
     "manifest",
     "validator",
     "agent-internet",
-    "capability"
+    "capability",
+    "x402",
+    "payment",
+    "discovery",
+    "open-standard",
+    "multi-chain"
   ],
   "license": "MIT",
+  "homepage": "https://agentjson.org",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/agent-json"
+    "url": "git+https://github.com/FransDevelopment/agent-json.git"
   }
 }

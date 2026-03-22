@@ -1,10 +1,35 @@
 # agent.json
 
-The open capability manifest for the agent internet.
+**The open capability manifest for the agent internet.**
+
+[![Spec Version](https://img.shields.io/badge/spec-v1.2-blue)](./SPECIFICATION.md)
+[![Schema](https://img.shields.io/badge/schema-JSON%20Schema%202020--12-green)](./schema.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/agent-json-validate)](https://www.npmjs.com/package/agent-json-validate)
 
 `agent.json` is a machine-readable file that a service publishes to declare what it offers to AI agents — its capabilities, inputs, and payment terms.
 
-Just as `robots.txt` tells search engines how to crawl a site, and `.well-known/security.txt` declares security disclosure policies, `agent.json` tells AI agents exactly how to interact with your service. It replaces the need for agents to blindly scrape pages or guess API endpoints.
+Just as `robots.txt` tells search engines how to crawl a site, `agent.json` tells AI agents exactly how to interact with your service. It replaces the need for agents to blindly scrape pages or guess API endpoints.
+
+---
+
+## Table of Contents
+
+- [Why does this exist?](#why-does-this-exist)
+- [Quick Start](#quick-start)
+- [Integration Tiers](#integration-tiers)
+- [The Economics](#the-economics)
+- [x402 Payment Discovery](#x402-payment-discovery)
+- [Validator](#validator)
+- [Examples](#examples)
+- [Specification Summary](#specification-summary)
+- [Extensions](#extensions)
+- [Goals and Governance](#goals-and-governance)
+- [Contributing](#contributing)
+- [Further Reading](#further-reading)
+- [License](#license)
+
+---
 
 ## Why does this exist?
 
@@ -15,13 +40,82 @@ This repository establishes a standardized, decentralized, open protocol to solv
 - **For Service Providers (Websites, SaaS, Apps):** Make your service "agent-ready" in 5 minutes. Let agents interact with your product and get paid for it — without building and maintaining a custom agent API.
 - **For AI Agent Builders (Runtimes):** Stop hardcoding brittle web scrapers or custom tool integrations. Fetch the `agent.json` and dynamically understand a site's capabilities, inputs, and payment terms instantly.
 
+---
+
+## Quick Start
+
+### 1. Create your manifest
+
+```json
+{
+  "version": "1.2",
+  "origin": "yoursite.com",
+  "payout_address": "0xYOUR_WALLET_ADDRESS",
+  "display_name": "Your Service",
+  "description": "What your service does.",
+  "intents": [
+    {
+      "name": "search_products",
+      "description": "Search your catalog by keyword. Returns product names, prices, and availability.",
+      "parameters": {
+        "query": { "type": "string", "required": true }
+      }
+    }
+  ],
+  "bounty": {
+    "type": "cpa",
+    "rate": 2.00,
+    "currency": "USDC"
+  }
+}
+```
+
+### 2. Host it
+
+Serve the file at:
+
+```
+https://yoursite.com/.well-known/agent.json
+```
+
+That's it. Your service is now discoverable by any agent runtime that implements the spec. No single entity controls the registry.
+
+### 3. Validate it
+
+```bash
+npx agent-json-validate https://yoursite.com/.well-known/agent.json
+```
+
+Or validate a local file:
+
+```bash
+npx agent-json-validate ./agent.json
+```
+
+---
+
+## Integration Tiers
+
+The protocol supports progressive integration. Start minimal, add detail as your integration matures.
+
+| Tier | What you publish | What agents can do | Economics |
+|------|------------------|--------------------|-------------|
+| **1 — Minimal** | `version` + `origin` + `payout_address` | Interact via web automation | Pay bounties for routing |
+| **2 — Structured** | Add `intents` with descriptions and parameters | Precise capability matching, better routing | Pay bounties + receive runtime incentives |
+| **2+ — Direct API** | Add `endpoint` and `method` to intents | Agents call your API directly, no browser needed | Charge users prices + receive runtime incentives |
+| **3 — Authenticated** | Add `identity` metadata | Runtime-specific trust policies and richer provider identity | All of the above + optional runtime-specific trust flows |
+
+Start at Tier 1. Add detail as your integration matures. Each tier earns more because each tier provides more value to agents and their users.
+
+---
+
 ## The Economics
 
 ### How value flows
 
 The `agent.json` establishes an economic layer for the agentic web — but it's important to understand how it works.
 
-**The manifest is an open standard. The economics are opt-in.** Any runtime can read your `agent.json` and use your declared intents. Whether a provider pays bounties to attract runtimes, or a runtime pays incentives to reward providers, are independent decisons. Nothing in the protocol forces payment.
+**The manifest is an open standard. The economics are opt-in.** Any runtime can read your `agent.json` and use your declared intents. Whether a provider pays bounties to attract runtimes, or a runtime pays incentives to reward providers, are independent decisions. Nothing in the protocol forces payment.
 
 So why would a runtime (or a provider) pay?
 
@@ -29,7 +123,7 @@ Because the economics are mutually beneficial. Providers who receive *incentives
 
 **The same dynamic drove the web's existing economics.** Search engines don't *have* to share revenue with publishers. Payment gateways don't *have* to share revenue with platforms. They do because the ecosystem is more valuable when value flows to the participants who create it.
 
-### The Three Economic Layers
+### The Economic Layers
 
 #### 1. Bounties (Provider → Runtime)
 
@@ -54,7 +148,7 @@ The difference is significant:
 | Direct API endpoints (Tier 2+) | 0–1 AI calls, 1–3 seconds | Fast |
 | Agent-native endpoints (Tier 3) | 0 AI calls, <1 second | Fastest |
 
-A provider with a structured manifest can reduce agent compute costs by 10–100x compared to blind automation. This creates a natural economic incentive: runtimes that charge users for compute have reason to preferentially route to efficient providers. 
+A provider with a structured manifest can reduce agent compute costs by 10–100x compared to blind automation. This creates a natural economic incentive: runtimes that charge users for compute have reason to preferentially route to efficient providers.
 
 A provider can optionally *suggest* an `incentive` in their manifest for providing this structured access:
 
@@ -62,7 +156,7 @@ A provider can optionally *suggest* an `incentive` in their manifest for providi
 "incentive": { "type": "cpa", "rate": 0.50, "currency": "USDC" }
 ```
 
-"Incentive" is standard B2B operational language. This is a purely opt-in economic framework:
+This is a purely opt-in economic framework:
 
 1. **Suggesting an incentive is optional.** A provider does not have to include an `incentive` field. A runtime might choose to pay a provider an incentive organically simply because their endpoint delivered excellent compute efficiency.
 2. **Runtimes can pay more.** A runtime isn't limited to the suggested rate. If a runtime's algorithm notices a provider offers exceptional privacy, speed, or accuracy, the runtime might choose to pay a higher incentive to ensure that provider stays well-resourced.
@@ -109,15 +203,18 @@ If your service charges for access — per API call, per unit of usage, or a fla
   },
   "price": {
     "amount": 0.50,
-    "currency": "USD",
-    "model": "per_call"
+    "currency": "USDC",
+    "model": "per_call",
+    "network": ["base", "arbitrum"]
   }
 }
 ```
 
-This tells any agent runtime upfront: "this intent costs $0.50 per call." The runtime can present this cost to the user, factor it into task planning, and obtain approval through its supervision layer before executing.
+This tells any agent runtime upfront: "this intent costs $0.50 per call, payable in USDC on Base or Arbitrum." The runtime can present this cost to the user, factor it into task planning, and obtain approval through its supervision layer before executing.
 
-Here is how the three economic layers interact:
+The `network` field accepts a single string (e.g., `"base"`) or an array of strings (e.g., `["base", "arbitrum"]`), enabling multi-chain providers to advertise all accepted settlement networks. Agents use this for routing — an agent with an Arbitrum wallet can immediately see that this provider accepts Arbitrum, without needing a round-trip request.
+
+### How the economic layers interact
 
 | | `price` | `bounty` | `incentive` |
 |--|---------|----------|-------------|
@@ -129,98 +226,59 @@ An intent can have any combination. A SaaS might charge $0.50 per call (`price`)
 
 Supported pricing models:
 - **`per_call`** — fixed cost per invocation (default)
-- **`per_unit`** — cost scales with a parameter value (e.g., $0.10 × number of images generated)
+- **`per_unit`** — cost scales with a parameter value (e.g., $0.10 x number of images generated)
 - **`flat`** — one-time access fee
 
-See [the paid SaaS example](./examples/paid-saas-api.json).
+---
 
-## Quick Start
+## x402 Payment Discovery
 
-### 1. Create your manifest
+The [x402 protocol](https://www.x402.org/) builds on HTTP 402 (Payment Required) to enable structured payment challenges and proofs. The `x402` object in `agent.json` enables agents to discover payment capabilities *before* making a request — eliminating the need for a failed request to trigger payment negotiation.
 
 ```json
 {
-  "version": "1.0",
-  "origin": "yoursite.com",
-  "payout_address": "0xYOUR_BASE_L2_ADDRESS",
-  "display_name": "Your Service",
-  "description": "What your service does.",
-  "intents": [
-    {
-      "name": "search_products",
-      "description": "Search your catalog by keyword. Returns product names, prices, and availability.",
-      "parameters": {
-        "query": { "type": "string", "required": true }
+  "x402": {
+    "supported": true,
+    "networks": [
+      {
+        "network": "base",
+        "asset": "USDC",
+        "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "facilitator": "https://x402.org/facilitator"
+      },
+      {
+        "network": "arbitrum",
+        "asset": "USDC",
+        "contract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "facilitator": "https://x402.org/facilitator"
       }
-    }
-  ],
-  "bounty": {
-    "type": "cpa",
-    "rate": 2.00,
-    "currency": "USDC"
+    ],
+    "recipient": "0xYOUR_ADDRESS"
   }
 }
 ```
 
-### 2. Host it
+The `x402` object supports two forms:
+- **Single-network (flat fields)** — for providers on one chain: `network`, `asset`, `contract`, `facilitator`
+- **Multi-network (`networks` array)** — for providers on multiple chains, each entry bundles the per-network settlement details (contract address, facilitator URL)
 
-Serve the file at:
-
-```
-https://yoursite.com/.well-known/agent.json
-```
-
-That's it. Your service is now discoverable by any agent runtime that implements the spec. No single entity controls the registry.
-
-### 3. Validate it
-
-```bash
-npx agent-json-validate https://yoursite.com/.well-known/agent.json
-```
-
-Or validate a local file:
-
-```bash
-npx agent-json-validate ./agent.json
-```
-
-## What's in this repo
-
-| File | Description |
-|------|-------------|
-| [SPECIFICATION.md](./SPECIFICATION.md) | The full spec — schema, field reference, discovery protocol, security considerations |
-| [schema.json](./schema.json) | JSON Schema (2020-12) for programmatic validation |
-| [validate.js](./validate.js) | Zero-dependency CLI validator and Node.js library |
-| [examples/](./examples/) | Example manifests for different industries |
-
-## Integration Tiers
-
-The protocol supports progressive integration. Start minimal, add detail as your integration matures.
-
-| Tier | What you publish | What agents can do | Economics |
-|------|------------------|--------------------|-------------|
-| **1 — Minimal** | `version` + `origin` + `payout_address` | Interact via web automation. | Pay bounties for routing |
-| **2 — Structured** | Add `intents` with descriptions and parameters | Precise capability matching. Better routing. | Pay bounties + receive runtime incentives |
-| **2+ — Direct API** | Add `endpoint` and `method` to intents | Agents call your API directly. No browser needed. | Charge users prices + receive runtime incentives |
-| **3 — Authenticated** | Add `identity` metadata | Runtime-specific trust policies and richer provider identity. | All of the above + optional runtime-specific trust flows |
-
-Start at Tier 1. Add detail as your integration matures. Each tier earns more because each tier provides more value to agents and their users.
-
-## Extensions
-
-The core manifest stays small on purpose. Runtime- or vendor-specific metadata should live under an `extensions` object, for example:
+Intent-level x402 overrides allow per-intent pricing with optional per-network differentiation:
 
 ```json
 {
-  "extensions": {
-    "air": {
-      "custom_field": true
-    }
+  "x402": {
+    "direct_price": 0.50,
+    "ticket_price": 0.40,
+    "network_pricing": [
+      { "network": "ethereum", "direct_price": 0.55, "ticket_price": 0.45 }
+    ]
   }
 }
 ```
 
-Runtimes should ignore unknown extension namespaces. Signing and verification behavior are not standardized in `v1.0`; runtimes that support them should document that behavior in their own extension namespace.
+The `x402` field is entirely optional. It does not replace `price`, does not prevent other payment mechanisms, and does not make x402 the only supported payment rail. See [the x402 micropayments example](./examples/x402-micropayments.json) and [SPECIFICATION.md §4.8](./SPECIFICATION.md) for full details.
+
+---
 
 ## Validator
 
@@ -248,9 +306,9 @@ Exit code `0` = valid, `1` = invalid.
 const { validate } = require("agent-json-validate");
 
 const result = validate({
-  version: "1.0",
+  version: "1.2",
   origin: "example.com",
-  payout_address: "0xYOUR_BASE_L2_ADDRESS",
+  payout_address: "0xYOUR_WALLET_ADDRESS",
   intents: [
     {
       name: "search_products",
@@ -259,9 +317,9 @@ const result = validate({
   ],
 });
 
-console.log(result.valid); // true
-console.log(result.tier); // 2
-console.log(result.errors); // []
+console.log(result.valid);    // true
+console.log(result.tier);     // 2
+console.log(result.errors);   // []
 console.log(result.warnings); // []
 ```
 
@@ -277,23 +335,77 @@ const ajv = new Ajv();
 const isValid = ajv.validate(schema, manifest);
 ```
 
+---
+
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| [tier1-minimal.json](./examples/tier1-minimal.json) | Minimal three-field manifest |
+| [tier2-ecommerce.json](./examples/tier2-ecommerce.json) | E-commerce with search, cart, and purchase intents |
+| [tier2-saas.json](./examples/tier2-saas.json) | SaaS document platform with CRUD intents |
+| [tier2-travel.json](./examples/tier2-travel.json) | Travel booking with flights, hotels, and reservations |
+| [tier3-authenticated.json](./examples/tier3-authenticated.json) | Financial API with DID identity and extensions |
+| [paid-saas-api.json](./examples/paid-saas-api.json) | Paid API with per-call and per-unit pricing |
+| [payment-intent-hosted.json](./examples/payment-intent-hosted.json) | Hosted checkout and crypto tipping |
+| [x402-micropayments.json](./examples/x402-micropayments.json) | Multi-network x402 micropayments with per-network pricing |
+
+---
+
 ## Specification Summary
 
 **Required fields:** `version`, `origin`, `payout_address`
 
-**Optional fields:** `display_name`, `description`, `extensions`, `identity`, `intents`, `bounty`, `incentive`
+**Optional fields:** `display_name`, `description`, `extensions`, `identity`, `intents`, `bounty`, `incentive`, `x402`
 
-**Intent fields:** `name`, `description`, `extensions`, `endpoint`, `method`, `parameters`, `returns`, `price`, `bounty`, `incentive`
+**Intent fields:** `name`, `description`, `extensions`, `endpoint`, `method`, `parameters`, `returns`, `price`, `bounty`, `incentive`, `x402`
 
 **Hosting:** `https://{domain}/.well-known/agent.json` (preferred) or `https://{domain}/agent.json` (fallback)
 
 **Discovery:** Agent runtimes fetch the manifest when first interacting with a domain. No registration needed — publishing the file is sufficient.
 
-**Bounty resolution:** Intent-level bounty > Manifest-level bounty > No bounty
+**Resolution orders:**
+- **Bounty:** Intent-level bounty > Manifest-level bounty > No bounty
+- **x402:** Intent-level x402 > Root-level x402 > No x402
+- **x402 pricing:** `network_pricing[network]` > intent `direct_price`/`ticket_price` > `price.amount`
+- **x402 networks:** `networks` array (if present) > flat fields (`network`, `asset`, `contract`, `facilitator`)
 
 **Extensibility:** Vendor-specific metadata should live under an `extensions` object (e.g., `"extensions": { "air": { ... } }`). Legacy `x-` or `x_` prefixed fields are also tolerated. Runtimes must gracefully ignore unknown fields to ensure forward compatibility.
 
 See [SPECIFICATION.md](./SPECIFICATION.md) for the complete reference.
+
+---
+
+## Extensions
+
+The core manifest stays small on purpose. Runtime- or vendor-specific metadata should live under an `extensions` object, for example:
+
+```json
+{
+  "extensions": {
+    "air": {
+      "custom_field": true
+    }
+  }
+}
+```
+
+Runtimes should ignore unknown extension namespaces. Signing and verification behavior are not standardized in the current spec; runtimes that support them should document that behavior in their own extension namespace.
+
+---
+
+## What's in this repo
+
+| File | Description |
+|------|-------------|
+| [SPECIFICATION.md](./SPECIFICATION.md) | The full spec — schema, field reference, discovery protocol, security considerations |
+| [schema.json](./schema.json) | JSON Schema (2020-12) for programmatic validation |
+| [validate.js](./validate.js) | Zero-dependency CLI validator and Node.js library |
+| [test.js](./test.js) | Test suite — 70 tests covering all schema features |
+| [examples/](./examples/) | Example manifests for different industries and use cases |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Contribution guidelines |
+
+---
 
 ## Goals and Governance
 
@@ -304,13 +416,20 @@ The goal of this repository is to establish a decentralized, open standard for a
 - Multiple payment rails are supported. No single payment provider is required.
 - The standard evolves through open contribution, not proprietary control.
 
-We welcome PRs, proposals for standard intents across industries, and open discussion on how to improve the specification.
+---
+
+## Contributing
+
+We welcome contributions of all kinds — from typo fixes to new features. See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on how to get involved.
+
+---
 
 ## Further Reading
 
-If you want to understand the emerging agent internet more, including the research and philosophies underpinning this protocol, please refer to:
-[https://arcede.com/papers](https://arcede.com/papers)
+If you want to understand the emerging agent internet more, including the research and philosophies underpinning this protocol, please refer to: [https://arcede.com/papers](https://arcede.com/papers)
+
+---
 
 ## License
 
-MIT
+[MIT](./LICENSE)

@@ -1,4 +1,4 @@
-# agent.json Specification v1.0
+# agent.json Specification v1.2
 
 ## The open capability manifest for the agent internet.
 
@@ -162,16 +162,17 @@ Manifest signing and verification are **not** standardized in v1.0. Runtimes tha
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `version` | string | **yes** | Manifest schema version. Must be `"1.0"` for this spec. |
+| `version` | string | **yes** | Manifest schema version. `"1.0"`, `"1.1"`, or `"1.2"`. |
 | `origin` | string | **yes** | The domain this manifest represents. Must match the domain serving the file. Example: `"example.com"` |
 | `payout_address` | string | **yes** | Wallet address for receiving payments. Currently USDC on Base L2. Example: `"0x..."` |
 | `display_name` | string | no | Human-readable service name. Used in dashboards and reporting. |
 | `description` | string | no | Brief description of the service. Used for semantic discovery when intents aren't declared. |
 | `extensions` | object | no | Vendor-specific extension namespaces. Recommended shape: `extensions.<vendor>`. Unknown namespaces must be ignored. |
-| `identity` | object | no | Provider identity metadata for Tier 3 integration. See §4.5. |
+| `identity` | object | no | Provider identity metadata for Tier 3 integration. See §4.7. |
 | `intents` | array | no | Array of `Intent` objects declaring available capabilities. See §4.2. |
 | `bounty` | object | no | Default economic terms for all intents. See §4.4. Can be overridden per-intent. |
 | `incentive` | object | no | Default suggested incentive for all intents. See §4.6. Can be overridden per-intent. |
+| `x402` | object | no | x402 payment discovery metadata. See §4.8. Declares support for x402 (HTTP 402) payment negotiation. |
 
 ### 4.2 Intent Object
 
@@ -189,6 +190,7 @@ Each intent represents one capability the service offers to agents.
 | `price` | object | no | What the provider charges to access this intent. See §4.5. When present, the runtime must arrange payment before or during execution. |
 | `bounty` | object | no | Per-intent bounty override. What the provider pays the runtime for completing this intent. Takes priority over manifest-level bounty. |
 | `incentive` | object | no | Per-intent incentive override. What the provider suggests the runtime pay for fulfilling this intent. Takes priority over manifest-level incentive. |
+| `x402` | object | no | Per-intent x402 payment metadata. Overrides or extends root-level x402 configuration. See §4.8.2. |
 
 When `endpoint` is present, the intent is a **direct API intent** — the agent runtime calls the endpoint with the declared parameters and receives a structured response. When `endpoint` is absent, the intent is a **semantic intent** — the runtime uses the description for capability matching and executes via web automation or other means.
 
@@ -288,6 +290,7 @@ Optional pricing that the provider charges for accessing an intent. Price is wha
 | `model` | string | no | Pricing model. `"per_call"` (default), `"per_unit"` (amount × a parameter value), or `"flat"` (one-time access fee). |
 | `unit_param` | string | no | For `per_unit` model: which parameter determines the unit count. Example: `"tokens"` for an LLM API. |
 | `free_tier` | number | no | Number of free calls before pricing applies. Useful for trial access. |
+| `network` | string \| string[] | no | Settlement network(s) for on-chain currencies. A single string (e.g., `"base"`) or array of strings (e.g., `["base", "arbitrum"]`). Omit for fiat currencies. When present, agents can verify they are paying on the correct network before initiating a transaction. |
 
 **How the three economic layers interact:**
 
@@ -372,6 +375,147 @@ Optional provider identity metadata for authenticated provider integration.
 |-------|------|----------|-------------|
 | `did` | string | no | Decentralized Identifier. Example: `"did:web:example.com"` |
 | `public_key` | string | no | Base64url-encoded public key material advertised by the provider |
+
+### 4.8 x402 Object
+
+Optional payment discovery metadata for the x402 protocol. HTTP 402 (Payment Required) is a standard HTTP status code defined in [RFC 7231](https://www.rfc-editor.org/rfc/rfc7231). The x402 protocol builds on this by defining a structured payment challenge and proof mechanism. The `x402` object enables agents to discover payment capabilities *before* making a request — not after receiving a 402 response.
+
+> **Important:** The x402 field is entirely optional. It does not replace the `price` field, does not prevent other payment mechanisms, and does not make x402 the only supported payment rail. Providers can continue to use any payment method (Stripe, Lightning, direct transfers) with or without x402 support. The `extensions` namespace remains available for other payment rail metadata (e.g., `extensions.stripe`).
+
+#### 4.8.1 Root-Level x402 Object
+
+Declares that this provider supports x402 payment negotiation. These values serve as defaults for all intents.
+
+**Single-network form (flat fields):**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported` | boolean | **yes** | Whether the provider accepts x402 payment proofs. |
+| `network` | string | no | Settlement network. Example: `"base"`, `"ethereum"`. Used in single-network mode. |
+| `asset` | string | no | Payment asset accepted. Example: `"USDC"`, `"ETH"`. Used in single-network mode. |
+| `contract` | string | no | Token contract address for ERC-20 assets. Required for non-native assets in single-network mode. |
+| `facilitator` | string | no | URL of the x402 facilitator service used for payment verification. |
+| `recipient` | string | no | Recipient address for x402 payments. Defaults to the manifest's `payout_address` if omitted. |
+
+**Multi-network form (`networks` array):**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported` | boolean | **yes** | Whether the provider accepts x402 payment proofs. |
+| `networks` | array | no | Array of network configuration objects. When present, flat fields (`network`, `asset`, `contract`, `facilitator`) are ignored. |
+| `recipient` | string | no | Recipient address for x402 payments. Defaults to the manifest's `payout_address` if omitted. |
+
+**Network configuration object** (each entry in `networks`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `network` | string | **yes** | Blockchain network identifier. Examples: `"base"`, `"ethereum"`, `"arbitrum"`. |
+| `asset` | string | **yes** | Payment asset accepted on this network. Examples: `"USDC"`, `"ETH"`. |
+| `contract` | string | no | Token contract address for ERC-20 assets on this network. |
+| `facilitator` | string | no | URL of the x402 facilitator service for this network. |
+
+**Resolution:** If `networks` is present, it takes priority and flat fields are ignored. This allows single-network providers to use the simpler flat form while multi-network providers use the `networks` array.
+
+**Example — single network (flat):**
+
+```json
+{
+  "x402": {
+    "supported": true,
+    "network": "base",
+    "asset": "USDC",
+    "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "facilitator": "https://x402.org/facilitator"
+  }
+}
+```
+
+**Example — multi-network:**
+
+```json
+{
+  "x402": {
+    "supported": true,
+    "networks": [
+      {
+        "network": "base",
+        "asset": "USDC",
+        "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "facilitator": "https://x402.org/facilitator"
+      },
+      {
+        "network": "arbitrum",
+        "asset": "USDC",
+        "contract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "facilitator": "https://x402.org/facilitator"
+      }
+    ]
+  }
+}
+```
+
+#### 4.8.2 Intent-Level x402 Override
+
+Per-intent x402 metadata. When present, overrides or extends the root-level x402 configuration for that specific intent.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | Override the root-level `supported` flag for this intent. |
+| `direct_price` | number | Price per request when paying directly via x402 (no session ticket). Applies to all networks unless overridden by `network_pricing`. |
+| `ticket_price` | number | Discounted price per request when using a prepaid session ticket. Applies to all networks unless overridden by `network_pricing`. |
+| `description` | string | Human-readable explanation of x402 pricing for this intent. |
+| `network_pricing` | array | Per-network price overrides. Only needed when costs genuinely differ across chains. |
+
+**Network pricing object** (each entry in `network_pricing`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `network` | string | **yes** | Blockchain network this pricing applies to. |
+| `direct_price` | number | no | Network-specific direct price. Overrides the intent's top-level `direct_price`. |
+| `ticket_price` | number | no | Network-specific ticket price. Overrides the intent's top-level `ticket_price`. |
+
+**Resolution order for intent x402 pricing:** `network_pricing[matching_network]` → intent-level `direct_price`/`ticket_price` → `price.amount`
+
+**Example — single price for all networks:**
+
+```json
+{
+  "x402": {
+    "direct_price": 0.50,
+    "ticket_price": 0.40,
+    "description": "Pay $0.50/request directly via x402, or $0.40 with a Session Ticket."
+  }
+}
+```
+
+**Example — per-network overrides:**
+
+```json
+{
+  "x402": {
+    "direct_price": 0.50,
+    "ticket_price": 0.40,
+    "network_pricing": [
+      { "network": "ethereum", "direct_price": 0.55, "ticket_price": 0.45 }
+    ]
+  }
+}
+```
+
+In this example, Base and Arbitrum use the default $0.50/$0.40 pricing, while Ethereum costs $0.55/$0.45 due to higher gas costs.
+
+#### 4.8.3 x402 Resolution Order
+
+Intent-level `x402` → Root-level `x402` → No x402
+
+If an intent declares `x402`, its values take priority. If an intent has no `x402` but the root does, the root values apply. If neither declares `x402`, the provider does not support x402 payment discovery (but may still return 402 responses at runtime).
+
+#### 4.8.4 How x402 Interacts With Other Fields
+
+- **`price`** remains the canonical cost declaration. `x402` adds discovery metadata about *how* to pay, not *what* it costs.
+- **`bounty`** and **`incentive`** are unaffected. They describe provider-to-runtime and runtime-to-provider flows, which are independent of user-to-provider payment.
+- **`payout_address`** is used as the default x402 recipient unless `x402.recipient` overrides it.
+- **`extensions`** remains available for non-x402 payment rails (e.g., `extensions.stripe`, `extensions.lightning`).
 
 ---
 
@@ -540,6 +684,58 @@ The `description` field is the most important field in the manifest. Agent runti
 }
 ```
 
+### Paid API with x402 Micropayments (Multi-Network)
+
+```json
+{
+  "version": "1.2",
+  "origin": "api.example.com",
+  "payout_address": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+  "display_name": "Example Intelligence API",
+  "description": "AI-powered document analysis API with per-call micropayments via x402. No account required — pay per request with USDC on Base or Arbitrum.",
+  "x402": {
+    "supported": true,
+    "networks": [
+      {
+        "network": "base",
+        "asset": "USDC",
+        "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "facilitator": "https://x402.org/facilitator"
+      },
+      {
+        "network": "arbitrum",
+        "asset": "USDC",
+        "contract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "facilitator": "https://x402.org/facilitator"
+      }
+    ]
+  },
+  "intents": [
+    {
+      "name": "analyze_document",
+      "description": "AI-powered document analysis. Extracts key clauses, identifies risks, and generates a summary.",
+      "endpoint": "/api/v1/analyze",
+      "method": "POST",
+      "parameters": {
+        "document_url": { "type": "string", "required": true, "description": "URL of the document to analyze" }
+      },
+      "price": {
+        "amount": 0.50,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": ["base", "arbitrum"]
+      },
+      "x402": {
+        "direct_price": 0.50,
+        "ticket_price": 0.40,
+        "description": "Pay $0.50/analysis directly via x402, or $0.40/analysis with a Session Ticket."
+      }
+    }
+  ],
+  "bounty": { "type": "cpa", "rate": 0.25, "currency": "USDC" }
+}
+```
+
 ---
 
 ## 8. Versioning
@@ -549,7 +745,7 @@ The `version` field uses a simple `"MAJOR.MINOR"` format.
 - **Major version** changes (e.g., `"1.0"` → `"2.0"`) indicate breaking changes. Runtimes should handle unknown major versions gracefully (warn, don't crash).
 - **Minor version** changes (e.g., `"1.0"` → `"1.1"`) indicate backward-compatible additions. Runtimes should ignore unrecognized fields.
 
-This spec defines version `"1.0"`.
+This spec defines versions `"1.0"`, `"1.1"`, and `"1.2"`. Version `"1.1"` adds the `price.network` field and the `x402` object for payment discovery. Version `"1.2"` extends multi-network support with the `x402.networks` array for multi-chain settlement configuration. All v1.0 manifests remain valid and interoperable. Runtimes encountering v1.1 or v1.2 manifests should process all v1.0 fields normally and additionally parse `network` and `x402` if present.
 
 ---
 
@@ -639,16 +835,21 @@ Example — a crypto-native tipping intent:
 
 All three can coexist in the same manifest. A service can receive user payments for API calls (`price`), offer a routing bounty to agents who bring traffic (`bounty`), and request an operational performance payment from the runtime for efficiency (`incentive`).
 
-### 9.5 Payment Rail Agnosticism
+### 9.5 Payment Rail Support
 
-The spec intentionally does not mandate a specific payment rail for payment intents. The `payout_address` field and bounty system use USDC on Base L2, but payment intents can use any provider:
+The spec supports multiple payment mechanisms:
 
-- **Fiat Processors** — returns a hosted checkout session URL
-- **Crypto Commerce** — returns a hosted crypto payment page URL
-- **Native Web3** — returns a blockchain transaction request
-- **Any other custom gateway** — as long as the endpoint returns a payment URL or structured response
+**First-class support:**
+- **x402 (HTTP 402 Payment Required)** — Structured payment challenge and proof via HTTP headers. Agents discover x402 support from the manifest's `x402` field and can pre-compute payment before the first request. See §4.8.
+- **Direct transfer** — Agents send payment directly to the `payout_address` on the declared `network`.
 
-This is the "competitive marketplace for financial services" described in the agent internet papers. No single payment provider is privileged. The agent.json declares the capability; the provider chooses how to settle.
+**Extension support:**
+- Any other payment rail can be declared via `extensions.<vendor>` (e.g., `extensions.stripe`, `extensions.lightning`). Runtimes that understand those extensions can use them; runtimes that don't will ignore them.
+
+**Runtime-negotiated:**
+- Providers may return HTTP 402 responses with payment instructions at runtime, regardless of whether `x402` is declared in the manifest. The manifest enables *pre-flight* discovery; the HTTP response enables *runtime* negotiation.
+
+The spec does not mandate any specific payment rail. The `price` field declares cost. The payment mechanism is chosen by the provider and negotiated with the runtime. This is the "competitive marketplace for financial services" described in the agent internet papers. No single payment provider is privileged.
 
 ---
 

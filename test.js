@@ -78,6 +78,24 @@ test("accepts minimal Tier 1 manifest", () => {
   assert.strictEqual(result.tier, 1);
 });
 
+test("accepts version 1.1", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts version 1.2", () => {
+  const result = validate({
+    version: "1.2",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+  });
+  assert.strictEqual(result.valid, true);
+});
+
 test("rejects invalid version", () => {
   const result = validate({
     version: "2.0",
@@ -328,6 +346,556 @@ test("rejects per_unit model without unit_param", () => {
     ],
   });
   assert.strictEqual(result.valid, false);
+});
+
+// --- Unit tests: price.network ---
+
+console.log("\n  Price network validation\n");
+
+test("accepts price with network as string", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.01, currency: "USDC", model: "per_call", network: "base" },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts price with network as array of strings", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.01, currency: "USDC", model: "per_call", network: ["base", "arbitrum"] },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects price with network as number", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.01, currency: "USDC", network: 123 },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("network")));
+});
+
+test("rejects price with network as empty array", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.01, currency: "USDC", network: [] },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("network")));
+});
+
+test("warns on duplicate networks in price.network array", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.01, currency: "USDC", network: ["base", "base"] },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("duplicate") && w.includes("base")));
+});
+
+test("warns when fiat currency has network set", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        price: { amount: 0.50, currency: "USD", network: "base" },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("network") && w.includes("USD")));
+});
+
+// --- Unit tests: x402 root-level ---
+
+console.log("\n  x402 root-level validation\n");
+
+test("accepts valid x402 with flat fields (single network)", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      network: "base",
+      asset: "USDC",
+      contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      facilitator: "https://x402.org/facilitator",
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts valid x402 with networks array (multi-network)", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      networks: [
+        { network: "base", asset: "USDC", contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+        { network: "arbitrum", asset: "USDC", contract: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" },
+      ],
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects x402 missing supported field", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      network: "base",
+      asset: "USDC",
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("supported")));
+});
+
+test("rejects x402 with supported as non-boolean", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: "yes",
+      network: "base",
+      asset: "USDC",
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("supported") && e.includes("boolean")));
+});
+
+test("rejects networks entry missing required network field", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      networks: [
+        { asset: "USDC", contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+      ],
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("network")));
+});
+
+test("rejects networks entry missing required asset field", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      networks: [
+        { network: "base" },
+      ],
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("asset")));
+});
+
+test("accepts x402 with recipient override", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      network: "base",
+      asset: "USDC",
+      recipient: "0x1111111111111111111111111111111111111111",
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects x402 as non-object", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: "not-an-object",
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("x402") && e.includes("object")));
+});
+
+test("rejects x402 with empty networks array", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      networks: [],
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("networks") && e.includes("empty")));
+});
+
+test("accepts x402 with supported false and no network info (no warning)", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: false,
+    },
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(!result.warnings.some((w) => w.includes("x402")));
+});
+
+test("warns on duplicate networks in x402.networks array", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      networks: [
+        { network: "base", asset: "USDC" },
+        { network: "base", asset: "USDC" },
+      ],
+    },
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("duplicate") && w.includes("base")));
+});
+
+test("warns when x402 supported but no network info provided", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+    },
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("x402") && w.includes("network")));
+});
+
+// --- Unit tests: x402 intent-level ---
+
+console.log("\n  x402 intent-level validation\n");
+
+test("rejects intent x402 as non-object", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: "not-an-object",
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("x402") && e.includes("object")));
+});
+
+test("accepts valid intent-level x402", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: {
+          direct_price: 0.50,
+          ticket_price: 0.40,
+          description: "Pay $0.50 directly or $0.40 with a session ticket.",
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects intent x402 with negative direct_price", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: { direct_price: -1 },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("direct_price")));
+});
+
+test("rejects intent x402 with negative ticket_price", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: { ticket_price: -1 },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("ticket_price")));
+});
+
+test("warns when ticket_price > direct_price", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: { direct_price: 0.50, ticket_price: 0.60 },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("ticket_price")));
+});
+
+test("accepts intent x402 with network_pricing array", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: {
+          direct_price: 0.50,
+          ticket_price: 0.40,
+          network_pricing: [
+            { network: "ethereum", direct_price: 0.55, ticket_price: 0.45 },
+          ],
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects network_pricing entry missing network", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: {
+          direct_price: 0.50,
+          network_pricing: [
+            { direct_price: 0.55 },
+          ],
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("network")));
+});
+
+test("warns on duplicate networks in network_pricing array", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: {
+          direct_price: 0.50,
+          network_pricing: [
+            { network: "ethereum", direct_price: 0.55 },
+            { network: "ethereum", direct_price: 0.60 },
+          ],
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("duplicate") && w.includes("ethereum")));
+});
+
+test("warns when network_pricing references network not in root x402", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      networks: [
+        { network: "base", asset: "USDC" },
+      ],
+    },
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: {
+          direct_price: 0.50,
+          network_pricing: [
+            { network: "ethereum", direct_price: 0.55 },
+          ],
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("ethereum") && w.includes("not declared")));
+});
+
+test("no cross-ref warning when network_pricing matches root x402 networks", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      networks: [
+        { network: "base", asset: "USDC" },
+        { network: "ethereum", asset: "USDC" },
+      ],
+    },
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: {
+          direct_price: 0.50,
+          network_pricing: [
+            { network: "ethereum", direct_price: 0.55 },
+          ],
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(!result.warnings.some((w) => w.includes("not declared")));
+});
+
+test("cross-ref works with flat x402 network field", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      network: "base",
+      asset: "USDC",
+    },
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: {
+          direct_price: 0.50,
+          network_pricing: [
+            { network: "arbitrum", direct_price: 0.55 },
+          ],
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("arbitrum") && w.includes("not declared")));
+});
+
+test("warns when network_pricing entry has ticket_price > direct_price", () => {
+  const result = validate({
+    version: "1.1",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document.",
+        x402: {
+          direct_price: 0.50,
+          ticket_price: 0.40,
+          network_pricing: [
+            { network: "ethereum", direct_price: 0.50, ticket_price: 0.60 },
+          ],
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("network_pricing") && w.includes("ticket_price")));
 });
 
 // --- Unit tests: incentive ---

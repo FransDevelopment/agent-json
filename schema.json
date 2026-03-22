@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://agentjson.org/schema/v1.0/agent.json",
+    "$id": "https://agentjson.org/schema/v1.2/agent.json",
     "title": "agent.json",
     "description": "Capability manifest for the agent internet. Declares what a service offers to AI agents, how to interact with it, and where to send payments.",
     "type": "object",
@@ -16,7 +16,7 @@
     "properties": {
         "version": {
             "type": "string",
-            "const": "1.0",
+            "enum": ["1.0", "1.1", "1.2"],
             "description": "Manifest schema version."
         },
         "origin": {
@@ -67,6 +67,10 @@
         "incentive": {
             "$ref": "#/$defs/Incentive",
             "description": "Default suggested incentive the provider requests from runtimes per intent completion. Runtimes decide independently whether to honor this. Can be overridden per-intent."
+        },
+        "x402": {
+            "$ref": "#/$defs/X402Root",
+            "description": "x402 payment discovery metadata. Declares that this provider supports x402 (HTTP 402) payment negotiation. Enables agents to discover payment capabilities before making a request."
         }
     },
     "$defs": {
@@ -167,6 +171,10 @@
                 "incentive": {
                     "$ref": "#/$defs/Incentive",
                     "description": "Per-intent incentive override. Suggested amount the provider requests the runtime pay for fulfilling this intent. Takes priority over manifest-level incentive."
+                },
+                "x402": {
+                    "$ref": "#/$defs/X402Intent",
+                    "description": "Per-intent x402 payment metadata. Overrides or extends root-level x402 configuration for this intent."
                 }
             },
             "allOf": [
@@ -314,6 +322,165 @@
                     "type": "integer",
                     "minimum": 0,
                     "description": "Number of free calls before pricing applies."
+                },
+                "network": {
+                    "oneOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "minItems": 1
+                        }
+                    ],
+                    "description": "Settlement network(s) for on-chain currencies. A single string or array of strings. Examples: \"base\", \"ethereum\", \"arbitrum\", \"optimism\", \"polygon\". Omit for fiat currencies.",
+                    "examples": [
+                        "base",
+                        ["base", "arbitrum", "optimism"]
+                    ]
+                }
+            }
+        },
+        "X402Root": {
+            "type": "object",
+            "required": [
+                "supported"
+            ],
+            "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
+            "description": "Root-level x402 payment discovery metadata. Declares that this provider supports x402 (HTTP 402) payment negotiation. Use flat fields (network, asset, contract, facilitator) for single-network providers, or the networks array for multi-network support. If networks is present, flat network/asset/contract/facilitator fields are ignored.",
+            "properties": {
+                "supported": {
+                    "type": "boolean",
+                    "description": "Whether the provider accepts x402 payment proofs."
+                },
+                "network": {
+                    "type": "string",
+                    "description": "Settlement network for single-network providers. Ignored when networks array is present. Examples: \"base\", \"ethereum\"."
+                },
+                "asset": {
+                    "type": "string",
+                    "description": "Payment asset for single-network providers. Ignored when networks array is present. Examples: \"USDC\", \"ETH\"."
+                },
+                "contract": {
+                    "type": "string",
+                    "description": "Token contract address for ERC-20 assets. Required for non-native assets in single-network mode. Ignored when networks array is present."
+                },
+                "facilitator": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL of the x402 facilitator service for payment verification. Used in single-network mode. Ignored when networks array is present."
+                },
+                "recipient": {
+                    "type": "string",
+                    "description": "Recipient address for x402 payments. Defaults to the manifest's payout_address if omitted."
+                },
+                "networks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/X402NetworkConfig"
+                    },
+                    "minItems": 1,
+                    "description": "Multi-network x402 configuration. Each entry declares settlement details for one blockchain network. When present, flat fields (network, asset, contract, facilitator) are ignored."
+                }
+            }
+        },
+        "X402NetworkConfig": {
+            "type": "object",
+            "required": [
+                "network",
+                "asset"
+            ],
+            "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
+            "description": "x402 settlement configuration for a single blockchain network.",
+            "properties": {
+                "network": {
+                    "type": "string",
+                    "description": "Blockchain network identifier. Examples: \"base\", \"ethereum\", \"arbitrum\", \"optimism\", \"polygon\"."
+                },
+                "asset": {
+                    "type": "string",
+                    "description": "Payment asset accepted on this network. Examples: \"USDC\", \"ETH\"."
+                },
+                "contract": {
+                    "type": "string",
+                    "description": "Token contract address for ERC-20 assets on this network. Required for non-native assets."
+                },
+                "facilitator": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL of the x402 facilitator service for payment verification on this network."
+                }
+            }
+        },
+        "X402Intent": {
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
+            "description": "Per-intent x402 payment metadata. Overrides or extends root-level x402 configuration for this specific intent.",
+            "properties": {
+                "supported": {
+                    "type": "boolean",
+                    "description": "Override the root-level supported flag for this intent."
+                },
+                "direct_price": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Price per request when paying directly via x402 (no session ticket). Applies to all networks unless overridden by network_pricing."
+                },
+                "ticket_price": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Discounted price per request when using a prepaid session ticket. Applies to all networks unless overridden by network_pricing."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable explanation of x402 pricing for this intent."
+                },
+                "network_pricing": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/X402NetworkPricing"
+                    },
+                    "minItems": 1,
+                    "description": "Per-network price overrides. Only needed when costs genuinely differ across chains. Entries override the top-level direct_price/ticket_price for the specified network."
+                }
+            }
+        },
+        "X402NetworkPricing": {
+            "type": "object",
+            "required": [
+                "network"
+            ],
+            "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
+            "description": "Per-network x402 pricing override for an intent.",
+            "properties": {
+                "network": {
+                    "type": "string",
+                    "description": "Blockchain network this pricing applies to. Must match a network declared in the root x402 configuration."
+                },
+                "direct_price": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Network-specific price per request when paying directly via x402."
+                },
+                "ticket_price": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Network-specific discounted price per request when using a prepaid session ticket."
                 }
             }
         },

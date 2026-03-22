@@ -47,8 +47,8 @@ function validate(manifest, sourceUrl) {
   // version
   if (!manifest.version) {
     errors.push('Missing required field: "version"');
-  } else if (manifest.version !== "1.0") {
-    errors.push(`Invalid version: "${manifest.version}". Expected "1.0"`);
+  } else if (manifest.version !== "1.0" && manifest.version !== "1.1" && manifest.version !== "1.2") {
+    errors.push(`Invalid version: "${manifest.version}". Expected "1.0", "1.1", or "1.2"`);
   }
 
   // origin
@@ -129,6 +129,11 @@ function validate(manifest, sourceUrl) {
     validateIncentive(manifest.incentive, "manifest-level", errors, warnings);
   }
 
+  // x402 (optional, root-level)
+  if (manifest.x402 !== undefined) {
+    validateX402Root(manifest.x402, "x402", errors, warnings);
+  }
+
   // intents (optional)
   if (manifest.intents !== undefined) {
     if (!Array.isArray(manifest.intents)) {
@@ -145,6 +150,34 @@ function validate(manifest, sourceUrl) {
     );
   }
 
+  // Cross-reference validation: intent network_pricing networks should exist in root x402 config
+  if (manifest.x402 && typeof manifest.x402 === "object" && manifest.intents && Array.isArray(manifest.intents)) {
+    const rootNetworks = new Set();
+    if (Array.isArray(manifest.x402.networks)) {
+      manifest.x402.networks.forEach((entry) => {
+        if (entry && typeof entry.network === "string") {
+          rootNetworks.add(entry.network);
+        }
+      });
+    } else if (typeof manifest.x402.network === "string") {
+      rootNetworks.add(manifest.x402.network);
+    }
+
+    if (rootNetworks.size > 0) {
+      manifest.intents.forEach((intent, i) => {
+        if (intent && intent.x402 && Array.isArray(intent.x402.network_pricing)) {
+          intent.x402.network_pricing.forEach((entry, j) => {
+            if (entry && typeof entry.network === "string" && !rootNetworks.has(entry.network)) {
+              warnings.push(
+                `intents[${i}].x402.network_pricing[${j}]: network "${entry.network}" is not declared in the root x402 configuration. Agents will have no settlement details for this network.`
+              );
+            }
+          });
+        }
+      });
+    }
+  }
+
   // Check for unknown top-level fields
   const knownFields = [
     "version",
@@ -157,6 +190,7 @@ function validate(manifest, sourceUrl) {
     "intents",
     "bounty",
     "incentive",
+    "x402",
   ];
   for (const key of Object.keys(manifest)) {
     if (!knownFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
@@ -312,6 +346,11 @@ function validateIntent(intent, index, nameSet, errors, warnings) {
     validateIncentive(intent.incentive, `${prefix}.incentive`, errors, warnings);
   }
 
+  // x402 (optional, intent-level)
+  if (intent.x402 !== undefined) {
+    validateX402Intent(intent.x402, `${prefix}.x402`, errors, warnings);
+  }
+
   const knownFields = [
     "name",
     "description",
@@ -323,6 +362,7 @@ function validateIntent(intent, index, nameSet, errors, warnings) {
     "price",
     "bounty",
     "incentive",
+    "x402",
   ];
   for (const key of Object.keys(intent)) {
     if (!knownFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
@@ -373,6 +413,187 @@ function validatePrice(price, path, errors, warnings) {
   if (price.free_tier !== undefined) {
     if (typeof price.free_tier !== "number" || price.free_tier < 0 || !Number.isInteger(price.free_tier)) {
       errors.push(`${path}: "free_tier" must be a non-negative integer`);
+    }
+  }
+
+  if (price.network !== undefined) {
+    if (typeof price.network === "string") {
+      // valid — single network
+    } else if (Array.isArray(price.network)) {
+      if (price.network.length === 0) {
+        errors.push(`${path}: "network" array must not be empty`);
+      } else if (!price.network.every((n) => typeof n === "string")) {
+        errors.push(`${path}: "network" array must contain only strings`);
+      } else {
+        const seen = new Set();
+        for (const n of price.network) {
+          if (seen.has(n)) {
+            warnings.push(`${path}: duplicate network "${n}" in network array`);
+          }
+          seen.add(n);
+        }
+      }
+    } else {
+      errors.push(`${path}: "network" must be a string or array of strings`);
+    }
+
+    if (price.currency === "USD") {
+      warnings.push(
+        `${path}: "network" is set but currency is "USD". Network is typically used with on-chain currencies like "USDC".`
+      );
+    }
+  }
+}
+
+function validateX402Root(x402, path, errors, warnings) {
+  if (typeof x402 !== "object" || x402 === null) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  if (x402.supported === undefined) {
+    errors.push(`${path}: missing required field "supported"`);
+  } else if (typeof x402.supported !== "boolean") {
+    errors.push(`${path}: "supported" must be a boolean`);
+  }
+
+  if (x402.recipient !== undefined && typeof x402.recipient !== "string") {
+    errors.push(`${path}: "recipient" must be a string`);
+  }
+
+  if (x402.networks !== undefined) {
+    // Multi-network mode
+    if (!Array.isArray(x402.networks)) {
+      errors.push(`${path}: "networks" must be an array`);
+    } else if (x402.networks.length === 0) {
+      errors.push(`${path}: "networks" array must not be empty`);
+    } else {
+      const seenNetworks = new Set();
+      x402.networks.forEach((entry, i) => {
+        const entryPath = `${path}.networks[${i}]`;
+        if (typeof entry !== "object" || entry === null) {
+          errors.push(`${entryPath}: must be an object`);
+          return;
+        }
+        if (!entry.network || typeof entry.network !== "string") {
+          errors.push(`${entryPath}: missing required field "network" (string)`);
+        } else {
+          if (seenNetworks.has(entry.network)) {
+            warnings.push(`${entryPath}: duplicate network "${entry.network}" in networks array`);
+          }
+          seenNetworks.add(entry.network);
+        }
+        if (!entry.asset || typeof entry.asset !== "string") {
+          errors.push(`${entryPath}: missing required field "asset" (string)`);
+        }
+        if (entry.contract !== undefined && typeof entry.contract !== "string") {
+          errors.push(`${entryPath}: "contract" must be a string`);
+        }
+        if (entry.facilitator !== undefined && typeof entry.facilitator !== "string") {
+          errors.push(`${entryPath}: "facilitator" must be a string`);
+        }
+      });
+    }
+  } else {
+    // Single-network (flat) mode
+    if (x402.network !== undefined && typeof x402.network !== "string") {
+      errors.push(`${path}: "network" must be a string`);
+    }
+    if (x402.asset !== undefined && typeof x402.asset !== "string") {
+      errors.push(`${path}: "asset" must be a string`);
+    }
+    if (x402.contract !== undefined && typeof x402.contract !== "string") {
+      errors.push(`${path}: "contract" must be a string`);
+    }
+    if (x402.facilitator !== undefined && typeof x402.facilitator !== "string") {
+      errors.push(`${path}: "facilitator" must be a string`);
+    }
+
+    if (x402.supported === true && !x402.network && !x402.asset) {
+      warnings.push(
+        `${path}: x402 is supported but no network or asset is declared. Agents won't know how to pay.`
+      );
+    }
+  }
+}
+
+function validateX402Intent(x402, path, errors, warnings) {
+  if (typeof x402 !== "object" || x402 === null) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  if (x402.supported !== undefined && typeof x402.supported !== "boolean") {
+    errors.push(`${path}: "supported" must be a boolean`);
+  }
+
+  if (x402.direct_price !== undefined) {
+    if (typeof x402.direct_price !== "number" || x402.direct_price < 0) {
+      errors.push(`${path}: "direct_price" must be a non-negative number`);
+    }
+  }
+
+  if (x402.ticket_price !== undefined) {
+    if (typeof x402.ticket_price !== "number" || x402.ticket_price < 0) {
+      errors.push(`${path}: "ticket_price" must be a non-negative number`);
+    }
+  }
+
+  if (x402.description !== undefined && typeof x402.description !== "string") {
+    errors.push(`${path}: "description" must be a string`);
+  }
+
+  if (
+    typeof x402.ticket_price === "number" &&
+    typeof x402.direct_price === "number" &&
+    x402.ticket_price > x402.direct_price
+  ) {
+    warnings.push(
+      `${path}: "ticket_price" (${x402.ticket_price}) is greater than "direct_price" (${x402.direct_price}). Session tickets are typically discounted.`
+    );
+  }
+
+  if (x402.network_pricing !== undefined) {
+    if (!Array.isArray(x402.network_pricing)) {
+      errors.push(`${path}: "network_pricing" must be an array`);
+    } else if (x402.network_pricing.length === 0) {
+      errors.push(`${path}: "network_pricing" array must not be empty`);
+    } else {
+      const seenPricingNetworks = new Set();
+      x402.network_pricing.forEach((entry, i) => {
+        const entryPath = `${path}.network_pricing[${i}]`;
+        if (typeof entry !== "object" || entry === null) {
+          errors.push(`${entryPath}: must be an object`);
+          return;
+        }
+        if (!entry.network || typeof entry.network !== "string") {
+          errors.push(`${entryPath}: missing required field "network" (string)`);
+        } else {
+          if (seenPricingNetworks.has(entry.network)) {
+            warnings.push(`${entryPath}: duplicate network "${entry.network}" in network_pricing array`);
+          }
+          seenPricingNetworks.add(entry.network);
+        }
+        if (entry.direct_price !== undefined) {
+          if (typeof entry.direct_price !== "number" || entry.direct_price < 0) {
+            errors.push(`${entryPath}: "direct_price" must be a non-negative number`);
+          }
+        }
+        if (entry.ticket_price !== undefined) {
+          if (typeof entry.ticket_price !== "number" || entry.ticket_price < 0) {
+            errors.push(`${entryPath}: "ticket_price" must be a non-negative number`);
+          }
+        }
+        if (
+          typeof entry.ticket_price === "number" &&
+          typeof entry.direct_price === "number" &&
+          entry.ticket_price > entry.direct_price
+        ) {
+          warnings.push(
+            `${entryPath}: "ticket_price" (${entry.ticket_price}) is greater than "direct_price" (${entry.direct_price}). Session tickets are typically discounted.`
+          );
+        }
+      });
     }
   }
 }
