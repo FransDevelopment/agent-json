@@ -47,8 +47,8 @@ function validate(manifest, sourceUrl) {
   // version
   if (!manifest.version) {
     errors.push('Missing required field: "version"');
-  } else if (manifest.version !== "1.0" && manifest.version !== "1.1" && manifest.version !== "1.2") {
-    errors.push(`Invalid version: "${manifest.version}". Expected "1.0", "1.1", or "1.2"`);
+  } else if (manifest.version !== "1.0" && manifest.version !== "1.1" && manifest.version !== "1.2" && manifest.version !== "1.3") {
+    errors.push(`Invalid version: "${manifest.version}". Expected "1.0", "1.1", "1.2", or "1.3"`);
   }
 
   // origin
@@ -129,9 +129,19 @@ function validate(manifest, sourceUrl) {
     validateIncentive(manifest.incentive, "manifest-level", errors, warnings);
   }
 
-  // x402 (optional, root-level)
+  // x402 (optional, root-level — legacy v1.2)
   if (manifest.x402 !== undefined) {
     validateX402Root(manifest.x402, "x402", errors, warnings);
+  }
+
+  // payments (optional, root-level — v1.3+)
+  if (manifest.payments !== undefined) {
+    validatePayments(manifest.payments, "payments", errors, warnings);
+  }
+
+  // Warn if both legacy x402 and payments.x402 are present
+  if (manifest.x402 !== undefined && manifest.payments !== undefined && typeof manifest.payments === "object" && manifest.payments !== null && manifest.payments.x402 !== undefined) {
+    warnings.push('Both "x402" and "payments.x402" are present. Use "payments.x402" (v1.3) — the legacy top-level "x402" is ignored when "payments" is present.');
   }
 
   // intents (optional)
@@ -151,25 +161,41 @@ function validate(manifest, sourceUrl) {
   }
 
   // Cross-reference validation: intent network_pricing networks should exist in root x402 config
-  if (manifest.x402 && typeof manifest.x402 === "object" && manifest.intents && Array.isArray(manifest.intents)) {
+  // Collect root networks from either legacy x402 or payments.x402
+  const rootX402 = (manifest.payments && typeof manifest.payments === "object" && manifest.payments.x402 && typeof manifest.payments.x402 === "object")
+    ? manifest.payments.x402
+    : (manifest.x402 && typeof manifest.x402 === "object" ? manifest.x402 : null);
+
+  if (rootX402 && manifest.intents && Array.isArray(manifest.intents)) {
     const rootNetworks = new Set();
-    if (Array.isArray(manifest.x402.networks)) {
-      manifest.x402.networks.forEach((entry) => {
+    if (Array.isArray(rootX402.networks)) {
+      rootX402.networks.forEach((entry) => {
         if (entry && typeof entry.network === "string") {
           rootNetworks.add(entry.network);
         }
       });
-    } else if (typeof manifest.x402.network === "string") {
-      rootNetworks.add(manifest.x402.network);
+    } else if (typeof rootX402.network === "string") {
+      rootNetworks.add(rootX402.network);
     }
 
     if (rootNetworks.size > 0) {
       manifest.intents.forEach((intent, i) => {
+        // Check legacy intent.x402.network_pricing
         if (intent && intent.x402 && Array.isArray(intent.x402.network_pricing)) {
           intent.x402.network_pricing.forEach((entry, j) => {
             if (entry && typeof entry.network === "string" && !rootNetworks.has(entry.network)) {
               warnings.push(
                 `intents[${i}].x402.network_pricing[${j}]: network "${entry.network}" is not declared in the root x402 configuration. Agents will have no settlement details for this network.`
+              );
+            }
+          });
+        }
+        // Check v1.3 intent.payments.x402.network_pricing
+        if (intent && intent.payments && typeof intent.payments === "object" && intent.payments.x402 && Array.isArray(intent.payments.x402.network_pricing)) {
+          intent.payments.x402.network_pricing.forEach((entry, j) => {
+            if (entry && typeof entry.network === "string" && !rootNetworks.has(entry.network)) {
+              warnings.push(
+                `intents[${i}].payments.x402.network_pricing[${j}]: network "${entry.network}" is not declared in the root x402 configuration. Agents will have no settlement details for this network.`
               );
             }
           });
@@ -191,6 +217,7 @@ function validate(manifest, sourceUrl) {
     "bounty",
     "incentive",
     "x402",
+    "payments",
   ];
   for (const key of Object.keys(manifest)) {
     if (!knownFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
@@ -346,9 +373,19 @@ function validateIntent(intent, index, nameSet, errors, warnings) {
     validateIncentive(intent.incentive, `${prefix}.incentive`, errors, warnings);
   }
 
-  // x402 (optional, intent-level)
+  // x402 (optional, intent-level — legacy v1.2)
   if (intent.x402 !== undefined) {
     validateX402Intent(intent.x402, `${prefix}.x402`, errors, warnings);
+  }
+
+  // payments (optional, intent-level — v1.3+)
+  if (intent.payments !== undefined) {
+    validatePaymentsIntent(intent.payments, `${prefix}.payments`, errors, warnings);
+  }
+
+  // Warn if both legacy x402 and payments.x402 at intent level
+  if (intent.x402 !== undefined && intent.payments !== undefined && typeof intent.payments === "object" && intent.payments !== null && intent.payments.x402 !== undefined) {
+    warnings.push(`${prefix}: both "x402" and "payments.x402" are present. Use "payments.x402" (v1.3).`);
   }
 
   const knownFields = [
@@ -363,6 +400,7 @@ function validateIntent(intent, index, nameSet, errors, warnings) {
     "bounty",
     "incentive",
     "x402",
+    "payments",
   ];
   for (const key of Object.keys(intent)) {
     if (!knownFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
@@ -594,6 +632,165 @@ function validateX402Intent(x402, path, errors, warnings) {
           );
         }
       });
+    }
+  }
+}
+
+// --- v1.3 Payments wrapper validation ---
+
+function validatePayments(payments, path, errors, warnings) {
+  if (typeof payments !== "object" || payments === null || Array.isArray(payments)) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  for (const key of Object.keys(payments)) {
+    if (key === "x402") {
+      validatePaymentsX402Root(payments.x402, `${path}.x402`, errors, warnings);
+    } else if (key === "l402") {
+      validateL402Root(payments.l402, `${path}.l402`, errors, warnings);
+    } else if (key === "mpp") {
+      validateMPPRoot(payments.mpp, `${path}.mpp`, errors, warnings);
+    }
+    // Unknown protocol keys are allowed (future-proof)
+  }
+}
+
+function validatePaymentsX402Root(x402, path, errors, warnings) {
+  if (typeof x402 !== "object" || x402 === null) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  // supported is optional in payments wrapper (presence = supported)
+  if (x402.supported !== undefined && typeof x402.supported !== "boolean") {
+    errors.push(`${path}: "supported" must be a boolean`);
+  }
+
+  if (x402.recipient !== undefined && typeof x402.recipient !== "string") {
+    errors.push(`${path}: "recipient" must be a string`);
+  }
+
+  // If explicitly set to false, skip network validation
+  if (x402.supported === false) {
+    return;
+  }
+
+  if (x402.networks !== undefined) {
+    // Multi-network mode
+    if (!Array.isArray(x402.networks)) {
+      errors.push(`${path}: "networks" must be an array`);
+    } else if (x402.networks.length === 0) {
+      errors.push(`${path}: "networks" array must not be empty`);
+    } else {
+      const seenNetworks = new Set();
+      x402.networks.forEach((entry, i) => {
+        const entryPath = `${path}.networks[${i}]`;
+        if (typeof entry !== "object" || entry === null) {
+          errors.push(`${entryPath}: must be an object`);
+          return;
+        }
+        if (!entry.network || typeof entry.network !== "string") {
+          errors.push(`${entryPath}: missing required field "network" (string)`);
+        } else {
+          if (seenNetworks.has(entry.network)) {
+            warnings.push(`${entryPath}: duplicate network "${entry.network}" in networks array`);
+          }
+          seenNetworks.add(entry.network);
+        }
+        if (!entry.asset || typeof entry.asset !== "string") {
+          errors.push(`${entryPath}: missing required field "asset" (string)`);
+        }
+        if (entry.contract !== undefined && typeof entry.contract !== "string") {
+          errors.push(`${entryPath}: "contract" must be a string`);
+        }
+        if (entry.facilitator !== undefined && typeof entry.facilitator !== "string") {
+          errors.push(`${entryPath}: "facilitator" must be a string`);
+        }
+      });
+    }
+  } else {
+    // Single-network (flat) mode
+    if (x402.network !== undefined && typeof x402.network !== "string") {
+      errors.push(`${path}: "network" must be a string`);
+    }
+    if (x402.asset !== undefined && typeof x402.asset !== "string") {
+      errors.push(`${path}: "asset" must be a string`);
+    }
+    if (x402.contract !== undefined && typeof x402.contract !== "string") {
+      errors.push(`${path}: "contract" must be a string`);
+    }
+    if (x402.facilitator !== undefined && typeof x402.facilitator !== "string") {
+      errors.push(`${path}: "facilitator" must be a string`);
+    }
+
+    if (!x402.network && !x402.asset) {
+      warnings.push(
+        `${path}: x402 is present but no network or asset is declared. Agents won't know how to pay.`
+      );
+    }
+  }
+}
+
+function validateL402Root(l402, path, errors, warnings) {
+  if (typeof l402 !== "object" || l402 === null) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  if (l402.version !== undefined && typeof l402.version !== "string") {
+    errors.push(`${path}: "version" must be a string`);
+  }
+  if (l402.lightning_address !== undefined && typeof l402.lightning_address !== "string") {
+    errors.push(`${path}: "lightning_address" must be a string`);
+  }
+  if (l402.lnurl !== undefined && typeof l402.lnurl !== "string") {
+    errors.push(`${path}: "lnurl" must be a string`);
+  }
+  if (l402.description !== undefined && typeof l402.description !== "string") {
+    errors.push(`${path}: "description" must be a string`);
+  }
+  if (l402.recipient !== undefined && typeof l402.recipient !== "string") {
+    errors.push(`${path}: "recipient" must be a string`);
+  }
+}
+
+function validateMPPRoot(mpp, path, errors, warnings) {
+  if (typeof mpp !== "object" || mpp === null) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  if (mpp.stripe_account !== undefined && typeof mpp.stripe_account !== "string") {
+    errors.push(`${path}: "stripe_account" must be a string`);
+  }
+  if (mpp.provider !== undefined && typeof mpp.provider !== "string") {
+    errors.push(`${path}: "provider" must be a string`);
+  }
+  if (mpp.recipient !== undefined && typeof mpp.recipient !== "string") {
+    errors.push(`${path}: "recipient" must be a string`);
+  }
+}
+
+function validatePaymentsIntent(payments, path, errors, warnings) {
+  if (typeof payments !== "object" || payments === null || Array.isArray(payments)) {
+    errors.push(`${path}: must be an object`);
+    return;
+  }
+
+  if (payments.x402 !== undefined) {
+    validateX402Intent(payments.x402, `${path}.x402`, errors, warnings);
+  }
+
+  // l402 and mpp at intent level: basic object validation
+  if (payments.l402 !== undefined) {
+    if (typeof payments.l402 !== "object" || payments.l402 === null) {
+      errors.push(`${path}.l402: must be an object`);
+    }
+  }
+  if (payments.mpp !== undefined) {
+    if (typeof payments.mpp !== "object" || payments.mpp === null) {
+      errors.push(`${path}.mpp: must be an object`);
     }
   }
 }

@@ -2,7 +2,7 @@
 
 **The open capability manifest for the agent internet.**
 
-[![Spec Version](https://img.shields.io/badge/spec-v1.2-blue)](./SPECIFICATION.md)
+[![Spec Version](https://img.shields.io/badge/spec-v1.3-blue)](./SPECIFICATION.md)
 [![Schema](https://img.shields.io/badge/schema-JSON%20Schema%202020--12-green)](./schema.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](./LICENSE)
 [![npm](https://img.shields.io/npm/v/agent-json-validate)](https://www.npmjs.com/package/agent-json-validate)
@@ -19,7 +19,7 @@ Just as `robots.txt` tells search engines how to crawl a site, `agent.json` tell
 - [Quick Start](#quick-start)
 - [Integration Tiers](#integration-tiers)
 - [The Economics](#the-economics)
-- [x402 Payment Discovery](#x402-payment-discovery)
+- [Payment Discovery](#payment-discovery)
 - [Validator](#validator)
 - [Examples](#examples)
 - [Specification Summary](#specification-summary)
@@ -48,7 +48,7 @@ This repository establishes a standardized, decentralized, open protocol to solv
 
 ```json
 {
-  "version": "1.2",
+  "version": "1.3",
   "origin": "yoursite.com",
   "payout_address": "0xYOUR_WALLET_ADDRESS",
   "display_name": "Your Service",
@@ -231,52 +231,59 @@ Supported pricing models:
 
 ---
 
-## x402 Payment Discovery
+## Payment Discovery
 
-The [x402 protocol](https://www.x402.org/) builds on HTTP 402 (Payment Required) to enable structured payment challenges and proofs. The `x402` object in `agent.json` enables agents to discover payment capabilities *before* making a request — eliminating the need for a failed request to trigger payment negotiation.
+The `payments` object enables protocol-agnostic payment discovery — providers can advertise multiple payment rails (x402, L402, Lightning, MPP/Stripe) simultaneously, letting agents choose the best settlement path for their user.
 
 ```json
 {
-  "x402": {
-    "supported": true,
-    "networks": [
-      {
-        "network": "base",
-        "asset": "USDC",
-        "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "facilitator": "https://x402.org/facilitator"
-      },
-      {
-        "network": "arbitrum",
-        "asset": "USDC",
-        "contract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-        "facilitator": "https://x402.org/facilitator"
-      }
-    ],
-    "recipient": "0xYOUR_ADDRESS"
+  "payments": {
+    "x402": {
+      "networks": [
+        {
+          "network": "base",
+          "asset": "USDC",
+          "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "facilitator": "https://x402.org/facilitator"
+        },
+        {
+          "network": "arbitrum",
+          "asset": "USDC",
+          "contract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "facilitator": "https://x402.org/facilitator"
+        }
+      ],
+      "recipient": "0xYOUR_ADDRESS"
+    },
+    "l402": {
+      "lightning_address": "api@example.com"
+    }
   }
 }
 ```
 
-The `x402` object supports two forms:
-- **Single-network (flat fields)** — for providers on one chain: `network`, `asset`, `contract`, `facilitator`
-- **Multi-network (`networks` array)** — for providers on multiple chains, each entry bundles the per-network settlement details (contract address, facilitator URL)
+- Each key under `payments` is a protocol name. Presence = supported.
+- Unknown protocol keys are allowed for future extensibility.
+- Per-protocol `recipient` overrides the manifest's `payout_address`.
+- For x402 details (networks, flat fields), see [SPECIFICATION.md §4.8-4.9](./SPECIFICATION.md).
 
-Intent-level x402 overrides allow per-intent pricing with optional per-network differentiation:
+Intent-level payments allow per-intent pricing with optional per-network differentiation:
 
 ```json
 {
-  "x402": {
-    "direct_price": 0.50,
-    "ticket_price": 0.40,
-    "network_pricing": [
-      { "network": "ethereum", "direct_price": 0.55, "ticket_price": 0.45 }
-    ]
+  "payments": {
+    "x402": {
+      "direct_price": 0.50,
+      "ticket_price": 0.40,
+      "network_pricing": [
+        { "network": "ethereum", "direct_price": 0.55, "ticket_price": 0.45 }
+      ]
+    }
   }
 }
 ```
 
-The `x402` field is entirely optional. It does not replace `price`, does not prevent other payment mechanisms, and does not make x402 the only supported payment rail. See [the x402 micropayments example](./examples/x402-micropayments.json) and [SPECIFICATION.md §4.8](./SPECIFICATION.md) for full details.
+The `payments` field is entirely optional. It does not replace `price`, does not prevent other payment mechanisms, and does not privilege any single payment rail. See [the multi-protocol payments example](./examples/payments-multiprotocol.json) and [SPECIFICATION.md §4.9](./SPECIFICATION.md) for full details.
 
 ---
 
@@ -306,7 +313,7 @@ Exit code `0` = valid, `1` = invalid.
 const { validate } = require("agent-json-validate");
 
 const result = validate({
-  version: "1.2",
+  version: "1.3",
   origin: "example.com",
   payout_address: "0xYOUR_WALLET_ADDRESS",
   intents: [
@@ -349,6 +356,7 @@ const isValid = ajv.validate(schema, manifest);
 | [paid-saas-api.json](./examples/paid-saas-api.json) | Paid API with per-call and per-unit pricing |
 | [payment-intent-hosted.json](./examples/payment-intent-hosted.json) | Hosted checkout and crypto tipping |
 | [x402-micropayments.json](./examples/x402-micropayments.json) | Multi-network x402 micropayments with per-network pricing |
+| [payments-multiprotocol.json](./examples/payments-multiprotocol.json) | Multi-protocol payment discovery (x402 + L402 + MPP) |
 
 ---
 
@@ -356,9 +364,9 @@ const isValid = ajv.validate(schema, manifest);
 
 **Required fields:** `version`, `origin`, `payout_address`
 
-**Optional fields:** `display_name`, `description`, `extensions`, `identity`, `intents`, `bounty`, `incentive`, `x402`
+**Optional fields:** `display_name`, `description`, `extensions`, `identity`, `intents`, `bounty`, `incentive`, `x402`, `payments`
 
-**Intent fields:** `name`, `description`, `extensions`, `endpoint`, `method`, `parameters`, `returns`, `price`, `bounty`, `incentive`, `x402`
+**Intent fields:** `name`, `description`, `extensions`, `endpoint`, `method`, `parameters`, `returns`, `price`, `bounty`, `incentive`, `x402`, `payments`
 
 **Hosting:** `https://{domain}/.well-known/agent.json` (preferred) or `https://{domain}/agent.json` (fallback)
 
@@ -366,6 +374,7 @@ const isValid = ajv.validate(schema, manifest);
 
 **Resolution orders:**
 - **Bounty:** Intent-level bounty > Manifest-level bounty > No bounty
+- **Payments:** `payments` wrapper (v1.3) > legacy top-level `x402` (v1.2)
 - **x402:** Intent-level x402 > Root-level x402 > No x402
 - **x402 pricing:** `network_pricing[network]` > intent `direct_price`/`ticket_price` > `price.amount`
 - **x402 networks:** `networks` array (if present) > flat fields (`network`, `asset`, `contract`, `facilitator`)
@@ -401,7 +410,7 @@ Runtimes should ignore unknown extension namespaces. Signing and verification be
 | [SPECIFICATION.md](./SPECIFICATION.md) | The full spec — schema, field reference, discovery protocol, security considerations |
 | [schema.json](./schema.json) | JSON Schema (2020-12) for programmatic validation |
 | [validate.js](./validate.js) | Zero-dependency CLI validator and Node.js library |
-| [test.js](./test.js) | Test suite — 70 tests covering all schema features |
+| [test.js](./test.js) | Test suite — 103 tests covering all schema features |
 | [examples/](./examples/) | Example manifests for different industries and use cases |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Contribution guidelines |
 

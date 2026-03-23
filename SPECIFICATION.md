@@ -1,4 +1,4 @@
-# agent.json Specification v1.2
+# agent.json Specification v1.3
 
 ## The open capability manifest for the agent internet.
 
@@ -162,7 +162,7 @@ Manifest signing and verification are **not** standardized in v1.0. Runtimes tha
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `version` | string | **yes** | Manifest schema version. `"1.0"`, `"1.1"`, or `"1.2"`. |
+| `version` | string | **yes** | Manifest schema version. `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`. |
 | `origin` | string | **yes** | The domain this manifest represents. Must match the domain serving the file. Example: `"example.com"` |
 | `payout_address` | string | **yes** | Wallet address for receiving payments. Currently USDC on Base L2. Example: `"0x..."` |
 | `display_name` | string | no | Human-readable service name. Used in dashboards and reporting. |
@@ -173,6 +173,7 @@ Manifest signing and verification are **not** standardized in v1.0. Runtimes tha
 | `bounty` | object | no | Default economic terms for all intents. See §4.4. Can be overridden per-intent. |
 | `incentive` | object | no | Default suggested incentive for all intents. See §4.6. Can be overridden per-intent. |
 | `x402` | object | no | x402 payment discovery metadata. See §4.8. Declares support for x402 (HTTP 402) payment negotiation. |
+| `payments` | object | no | Payment protocol discovery wrapper. See §4.9. Added in v1.3. |
 
 ### 4.2 Intent Object
 
@@ -191,6 +192,7 @@ Each intent represents one capability the service offers to agents.
 | `bounty` | object | no | Per-intent bounty override. What the provider pays the runtime for completing this intent. Takes priority over manifest-level bounty. |
 | `incentive` | object | no | Per-intent incentive override. What the provider suggests the runtime pay for fulfilling this intent. Takes priority over manifest-level incentive. |
 | `x402` | object | no | Per-intent x402 payment metadata. Overrides or extends root-level x402 configuration. See §4.8.2. |
+| `payments` | object | no | Per-intent payment protocol overrides. See §4.9.2. Added in v1.3. |
 
 When `endpoint` is present, the intent is a **direct API intent** — the agent runtime calls the endpoint with the declared parameters and receives a structured response. When `endpoint` is absent, the intent is a **semantic intent** — the runtime uses the description for capability matching and executes via web automation or other means.
 
@@ -382,6 +384,8 @@ Optional payment discovery metadata for the x402 protocol. HTTP 402 (Payment Req
 
 > **Important:** The x402 field is entirely optional. It does not replace the `price` field, does not prevent other payment mechanisms, and does not make x402 the only supported payment rail. Providers can continue to use any payment method (Stripe, Lightning, direct transfers) with or without x402 support. The `extensions` namespace remains available for other payment rail metadata (e.g., `extensions.stripe`).
 
+> **Note:** For v1.3+, the recommended approach is to use the `payments` wrapper (§4.9) instead of the top-level `x402` field. The top-level `x402` field is retained for v1.2 backward compatibility.
+
 #### 4.8.1 Root-Level x402 Object
 
 Declares that this provider supports x402 payment negotiation. These values serve as defaults for all intents.
@@ -516,6 +520,119 @@ If an intent declares `x402`, its values take priority. If an intent has no `x40
 - **`bounty`** and **`incentive`** are unaffected. They describe provider-to-runtime and runtime-to-provider flows, which are independent of user-to-provider payment.
 - **`payout_address`** is used as the default x402 recipient unless `x402.recipient` overrides it.
 - **`extensions`** remains available for non-x402 payment rails (e.g., `extensions.stripe`, `extensions.lightning`).
+
+### 4.9 Payments Object (v1.3+)
+
+The `payments` object is a protocol-agnostic wrapper for payment discovery. Each key is a protocol name, and the presence of a key means the protocol is supported. This design allows providers to advertise multiple payment rails simultaneously and enables new payment protocols to be added without spec changes.
+
+> **Important:** The `payments` object replaces the top-level `x402` field from v1.2. Runtimes encountering v1.3 manifests should read payment configuration from `payments`. The legacy top-level `x402` field is still accepted for backward compatibility but is ignored when `payments` is present.
+
+#### 4.9.1 Root-Level Payments Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `x402` | object | x402 (HTTP 402) payment configuration. See §4.8.1 for field details. In the payments wrapper, the `supported` field is not required — presence of the key means x402 is supported. |
+| `l402` | object | L402 (Lightning Network) payment configuration. See below. |
+| `mpp` | object | Managed Payment Provider configuration. See below. |
+| *(any key)* | object | Unknown protocol keys are allowed. Runtimes should ignore unrecognized protocols. |
+
+**Protocol discovery:**
+
+```typescript
+const protocols = Object.keys(manifest.payments || {});
+// → ["x402", "l402", "mpp"]
+```
+
+**x402 within payments:**
+
+Same fields as the legacy root-level x402 (§4.8.1) — `networks`, `network`, `asset`, `contract`, `facilitator`, `recipient` — but the `supported` field is no longer required. Presence under `payments` means the protocol is supported. To explicitly advertise awareness without support, set `supported: false`.
+
+**Example — multi-protocol payment discovery:**
+
+```json
+{
+  "payments": {
+    "x402": {
+      "networks": [
+        {
+          "network": "base",
+          "asset": "USDC",
+          "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "facilitator": "https://x402.org/facilitator"
+        }
+      ],
+      "recipient": "0xYOUR_ADDRESS"
+    },
+    "l402": {
+      "lightning_address": "api@example.com"
+    },
+    "mpp": {
+      "stripe_account": "acct_1234567890",
+      "provider": "stripe"
+    }
+  }
+}
+```
+
+**L402 Object:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `lightning_address` | string | Lightning address for receiving payments (e.g., `api@example.com`). |
+| `lnurl` | string | LNURL endpoint for Lightning payment negotiation. |
+| `recipient` | string | Override recipient. Defaults to the manifest's `payout_address`. |
+
+**MPP (Managed Payment Provider) Object:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `stripe_account` | string | Stripe Connect account ID (e.g., `acct_...`). |
+| `provider` | string | Payment provider identifier (e.g., `stripe`, `square`, `adyen`). |
+| `recipient` | string | Override recipient. Defaults to the manifest's `payout_address`. |
+
+**Payout address resolution:**
+
+For any payment protocol, the recipient is resolved as:
+1. `payments.{protocol}.recipient` (if set)
+2. `payout_address` (manifest-level default)
+
+#### 4.9.2 Intent-Level Payments Object
+
+Each intent can override payment configuration per protocol using `payments` at the intent level. The structure mirrors the root-level `payments` object.
+
+For x402, intent-level overrides use the same fields as §4.8.2 (`direct_price`, `ticket_price`, `description`, `network_pricing`).
+
+**Example:**
+
+```json
+{
+  "name": "analyze_document",
+  "description": "AI-powered document analysis.",
+  "price": { "amount": 0.50, "currency": "USDC", "network": ["base"] },
+  "payments": {
+    "x402": {
+      "direct_price": 0.50,
+      "ticket_price": 0.40,
+      "network_pricing": [
+        { "network": "ethereum", "direct_price": 0.55, "ticket_price": 0.45 }
+      ]
+    }
+  }
+}
+```
+
+#### 4.9.3 Payments Resolution Order
+
+Intent-level `payments[protocol]` → Root-level `payments[protocol]` → No protocol support
+
+For x402 pricing within `payments`:
+`intent.payments.x402.network_pricing[matching_network]` → `intent.payments.x402.direct_price/ticket_price` → `price.amount`
+
+#### 4.9.4 Backward Compatibility
+
+- **v1.2 manifests** with top-level `x402` remain valid. Runtimes should check `payments.x402` first, then fall back to top-level `x402`.
+- **v1.2 intent-level** `x402` also remains valid. Runtimes should check `intent.payments.x402` first, then fall back to `intent.x402`.
+- If both `x402` and `payments.x402` are present, `payments.x402` takes precedence.
 
 ---
 
@@ -688,27 +805,28 @@ The `description` field is the most important field in the manifest. Agent runti
 
 ```json
 {
-  "version": "1.2",
+  "version": "1.3",
   "origin": "api.example.com",
   "payout_address": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
   "display_name": "Example Intelligence API",
   "description": "AI-powered document analysis API with per-call micropayments via x402. No account required — pay per request with USDC on Base or Arbitrum.",
-  "x402": {
-    "supported": true,
-    "networks": [
-      {
-        "network": "base",
-        "asset": "USDC",
-        "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        "facilitator": "https://x402.org/facilitator"
-      },
-      {
-        "network": "arbitrum",
-        "asset": "USDC",
-        "contract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-        "facilitator": "https://x402.org/facilitator"
-      }
-    ]
+  "payments": {
+    "x402": {
+      "networks": [
+        {
+          "network": "base",
+          "asset": "USDC",
+          "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "facilitator": "https://x402.org/facilitator"
+        },
+        {
+          "network": "arbitrum",
+          "asset": "USDC",
+          "contract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "facilitator": "https://x402.org/facilitator"
+        }
+      ]
+    }
   },
   "intents": [
     {
@@ -725,10 +843,12 @@ The `description` field is the most important field in the manifest. Agent runti
         "model": "per_call",
         "network": ["base", "arbitrum"]
       },
-      "x402": {
-        "direct_price": 0.50,
-        "ticket_price": 0.40,
-        "description": "Pay $0.50/analysis directly via x402, or $0.40/analysis with a Session Ticket."
+      "payments": {
+        "x402": {
+          "direct_price": 0.50,
+          "ticket_price": 0.40,
+          "description": "Pay $0.50/analysis directly via x402, or $0.40/analysis with a Session Ticket."
+        }
       }
     }
   ],
@@ -745,7 +865,7 @@ The `version` field uses a simple `"MAJOR.MINOR"` format.
 - **Major version** changes (e.g., `"1.0"` → `"2.0"`) indicate breaking changes. Runtimes should handle unknown major versions gracefully (warn, don't crash).
 - **Minor version** changes (e.g., `"1.0"` → `"1.1"`) indicate backward-compatible additions. Runtimes should ignore unrecognized fields.
 
-This spec defines versions `"1.0"`, `"1.1"`, and `"1.2"`. Version `"1.1"` adds the `price.network` field and the `x402` object for payment discovery. Version `"1.2"` extends multi-network support with the `x402.networks` array for multi-chain settlement configuration. All v1.0 manifests remain valid and interoperable. Runtimes encountering v1.1 or v1.2 manifests should process all v1.0 fields normally and additionally parse `network` and `x402` if present.
+This spec defines versions `"1.0"`, `"1.1"`, `"1.2"`, and `"1.3"`. Version `"1.1"` adds the `price.network` field and the `x402` object for payment discovery. Version `"1.2"` extends multi-network support with the `x402.networks` array for multi-chain settlement configuration. Version `"1.3"` introduces the `payments` wrapper for protocol-agnostic payment discovery, with built-in support for x402, L402 (Lightning), and MPP (managed payment providers). All prior manifests remain valid and interoperable.
 
 ---
 
@@ -839,12 +959,17 @@ All three can coexist in the same manifest. A service can receive user payments 
 
 The spec supports multiple payment mechanisms:
 
-**First-class support:**
-- **x402 (HTTP 402 Payment Required)** — Structured payment challenge and proof via HTTP headers. Agents discover x402 support from the manifest's `x402` field and can pre-compute payment before the first request. See §4.8.
+**First-class support (via `payments` wrapper, §4.9):**
+- **x402 (HTTP 402 Payment Required)** — Structured payment challenge and proof via HTTP headers. Agents discover x402 support from the manifest's `payments.x402` field and can pre-compute payment before the first request. See §4.8.
+- **L402 (Lightning Network)** — HTTP 402 challenges with macaroon-based authentication and Lightning Network BOLT 11 invoices. Also supports Lightning Address and LNURL for direct payment discovery. See §4.9.1.
+- **MPP (Managed Payment Provider)** — Traditional payment processors (Stripe, Square, etc.) for fiat payment collection. See §4.9.1.
 - **Direct transfer** — Agents send payment directly to the `payout_address` on the declared `network`.
 
+**Future protocols:**
+- The `payments` wrapper is protocol-agnostic. New payment protocols can be added by providers without spec changes — any key under `payments` is valid. Runtimes should ignore unrecognized protocols.
+
 **Extension support:**
-- Any other payment rail can be declared via `extensions.<vendor>` (e.g., `extensions.stripe`, `extensions.lightning`). Runtimes that understand those extensions can use them; runtimes that don't will ignore them.
+- Non-standard payment rails can also be declared via `extensions.<vendor>` (e.g., `extensions.custom_rail`). Runtimes that understand those extensions can use them; runtimes that don't will ignore them.
 
 **Runtime-negotiated:**
 - Providers may return HTTP 402 responses with payment instructions at runtime, regardless of whether `x402` is declared in the manifest. The manifest enables *pre-flight* discovery; the HTTP response enables *runtime* negotiation.

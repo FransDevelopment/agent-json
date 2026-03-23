@@ -1,0 +1,91 @@
+{
+  "version": "1.3",
+  "origin": "api.example.com",
+  "payout_address": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+  "display_name": "Example Intelligence API",
+  "description": "AI-powered document analysis and image generation API with multi-protocol payment support. Pay via x402 on-chain (Base, Arbitrum, Ethereum), Lightning Network (L402), or Stripe (MPP).",
+  "payments": {
+    "x402": {
+      "networks": [
+        {
+          "network": "base",
+          "asset": "USDC",
+          "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "facilitator": "https://x402.org/facilitator"
+        },
+        {
+          "network": "arbitrum",
+          "asset": "USDC",
+          "contract": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "facilitator": "https://x402.org/facilitator"
+        },
+        {
+          "network": "ethereum",
+          "asset": "USDC",
+          "contract": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "facilitator": "https://x402.org/facilitator"
+        }
+      ],
+      "recipient": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F"
+    },
+    "l402": {
+      "lightning_address": "api@example.com"
+    },
+    "mpp": {
+      "stripe_account": "acct_1234567890",
+      "provider": "stripe"
+    }
+  },
+  "intents": [
+    {
+      "name": "analyze_document",
+      "description": "AI-powered document analysis. Extracts key clauses, identifies risks, and generates a one-paragraph summary. Accepts PDF, DOCX, and plain text URLs.",
+      "endpoint": "/api/v1/analyze",
+      "method": "POST",
+      "parameters": {
+        "document_url": { "type": "string", "required": true, "description": "URL of the document to analyze" },
+        "analysis_type": { "type": "string", "required": false, "enum": ["summary", "risk", "full"], "default": "full" }
+      },
+      "price": {
+        "amount": 0.50,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": ["base", "arbitrum", "ethereum"]
+      },
+      "payments": {
+        "x402": {
+          "direct_price": 0.50,
+          "ticket_price": 0.40,
+          "description": "Pay $0.50/analysis directly via x402, or $0.40/analysis with a Session Ticket.",
+          "network_pricing": [
+            { "network": "ethereum", "direct_price": 0.55, "ticket_price": 0.45 }
+          ]
+        }
+      }
+    },
+    {
+      "name": "generate_images",
+      "description": "Generate images from text descriptions. Returns an array of image URLs. Higher count costs proportionally more.",
+      "endpoint": "/api/v1/generate",
+      "method": "POST",
+      "parameters": {
+        "prompt": { "type": "string", "required": true, "description": "Text description of the image to generate" },
+        "count": { "type": "integer", "required": false, "default": 1, "description": "Number of images to generate (1-10)" }
+      },
+      "price": {
+        "amount": 0.10,
+        "currency": "USDC",
+        "model": "per_unit",
+        "unit_param": "count",
+        "network": ["base", "arbitrum", "ethereum"]
+      },
+      "payments": {
+        "x402": {
+          "direct_price": 0.10,
+          "ticket_price": 0.08
+        }
+      }
+    }
+  ],
+  "bounty": { "type": "cpa", "rate": 0.25, "currency": "USDC" }
+}

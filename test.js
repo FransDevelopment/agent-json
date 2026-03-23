@@ -1073,6 +1073,501 @@ test("detects Tier 3", () => {
   assert.strictEqual(result.tier, 3);
 });
 
+// --- Unit tests: v1.3 payments wrapper ---
+
+console.log("\n  v1.3 payments wrapper\n");
+
+test("accepts version 1.3", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts payments.x402 with networks array", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: {
+        networks: [
+          { network: "base", asset: "USDC", contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+          { network: "arbitrum", asset: "USDC", contract: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" },
+        ],
+      },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts payments.x402 with flat fields (single network)", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: {
+        network: "base",
+        asset: "USDC",
+        contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("payments.x402 does not require supported field", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: {
+        networks: [{ network: "base", asset: "USDC" }],
+      },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(!result.errors.some((e) => e.includes("supported")));
+});
+
+test("payments.x402 with supported: false skips network validation", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: { supported: false },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(!result.warnings.some((w) => w.includes("network")));
+});
+
+test("accepts payments with multiple protocols (x402 + l402)", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: {
+        networks: [{ network: "base", asset: "USDC" }],
+      },
+      l402: {
+        lightning_address: "api@example.com",
+      },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts payments with all three protocols (x402 + l402 + mpp)", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: {
+        networks: [{ network: "base", asset: "USDC" }],
+      },
+      l402: {
+        lightning_address: "api@example.com",
+      },
+      mpp: {
+        stripe_account: "acct_123",
+        provider: "stripe",
+      },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects payments as non-object", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: "not-an-object",
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("payments") && e.includes("object")));
+});
+
+test("rejects payments.x402 as non-object", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: { x402: true },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("payments.x402") && e.includes("object")));
+});
+
+test("accepts payments.x402 with recipient override", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: {
+        networks: [{ network: "base", asset: "USDC" }],
+        recipient: "0x1111111111111111111111111111111111111111",
+      },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts unknown protocol keys in payments (future-proof)", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: { networks: [{ network: "base", asset: "USDC" }] },
+      some_future_protocol: { endpoint: "https://future.com/pay" },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("warns when both x402 and payments.x402 are present", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    x402: {
+      supported: true,
+      network: "base",
+      asset: "USDC",
+    },
+    payments: {
+      x402: { networks: [{ network: "base", asset: "USDC" }] },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("payments.x402") && w.includes("x402")));
+});
+
+// --- Unit tests: L402 validation ---
+
+console.log("\n  L402 validation\n");
+
+test("accepts valid l402 configuration", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      l402: { lightning_address: "api@example.com" },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts l402 with lnurl", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      l402: { lnurl: "lnurl1dp68gurn8ghj7ampd3ex2mrp..." },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects l402 as non-object", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: { l402: "not-an-object" },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("l402") && e.includes("object")));
+});
+
+test("accepts l402 with only recipient (no warning)", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      l402: { recipient: "some_address" },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("accepts l402 with version field", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      l402: { version: "0", lightning_address: "api@example.com" },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects l402 with non-string lightning_address", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: { l402: { lightning_address: 123 } },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("lightning_address")));
+});
+
+// --- Unit tests: MPP validation ---
+
+console.log("\n  MPP validation\n");
+
+test("accepts valid mpp configuration", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      mpp: { stripe_account: "acct_123", provider: "stripe" },
+    },
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects mpp as non-object", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: { mpp: "not-an-object" },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("mpp") && e.includes("object")));
+});
+
+test("rejects mpp with non-string stripe_account", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: { mpp: { stripe_account: 123 } },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("stripe_account")));
+});
+
+// --- Unit tests: intent-level payments wrapper ---
+
+console.log("\n  Intent-level payments wrapper\n");
+
+test("accepts intent with payments.x402", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        payments: {
+          x402: {
+            direct_price: 0.50,
+            ticket_price: 0.40,
+            description: "Pay $0.50 directly or $0.40 with a session ticket.",
+          },
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+});
+
+test("rejects intent payments as non-object", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        payments: "not-an-object",
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("payments") && e.includes("object")));
+});
+
+test("validates intent payments.x402 same as intent x402", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        payments: {
+          x402: { direct_price: -1 },
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("direct_price")));
+});
+
+test("warns when both intent.x402 and intent.payments.x402 are present", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        x402: { direct_price: 0.50 },
+        payments: { x402: { direct_price: 0.50 } },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("payments.x402") && w.includes("x402")));
+});
+
+// --- Unit tests: payments cross-reference validation ---
+
+console.log("\n  Payments cross-reference validation\n");
+
+test("payments.x402 with supported: false still validates recipient type", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: { supported: false, recipient: 123 },
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("recipient")));
+});
+
+test("rejects payments as array", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: [],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("payments") && e.includes("object")));
+});
+
+test("rejects intent payments.l402 as non-object", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        payments: { l402: "not-an-object" },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("l402") && e.includes("object")));
+});
+
+test("rejects intent payments.mpp as non-object", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        payments: { mpp: true },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("mpp") && e.includes("object")));
+});
+
+test("warns when intent payments.x402.network_pricing references undeclared network", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: {
+        networks: [{ network: "base", asset: "USDC" }],
+      },
+    },
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        payments: {
+          x402: {
+            direct_price: 0.50,
+            network_pricing: [
+              { network: "ethereum", direct_price: 0.55 },
+            ],
+          },
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("ethereum") && w.includes("not declared")));
+});
+
+test("no cross-ref warning when intent payments.x402 matches root payments.x402", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    payments: {
+      x402: {
+        networks: [
+          { network: "base", asset: "USDC" },
+          { network: "ethereum", asset: "USDC" },
+        ],
+      },
+    },
+    intents: [
+      {
+        name: "analyze",
+        description: "Analyze a document for key clauses.",
+        payments: {
+          x402: {
+            direct_price: 0.50,
+            network_pricing: [
+              { network: "ethereum", direct_price: 0.55 },
+            ],
+          },
+        },
+      },
+    ],
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(!result.warnings.some((w) => w.includes("not declared")));
+});
+
 // --- Results ---
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

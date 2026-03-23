@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://agentjson.org/schema/v1.2/agent.json",
+    "$id": "https://agentinternetruntime.com/schema/v1.3/agent.json",
     "title": "agent.json",
     "description": "Capability manifest for the agent internet. Declares what a service offers to AI agents, how to interact with it, and where to send payments.",
     "type": "object",
@@ -16,7 +16,7 @@
     "properties": {
         "version": {
             "type": "string",
-            "enum": ["1.0", "1.1", "1.2"],
+            "enum": ["1.0", "1.1", "1.2", "1.3"],
             "description": "Manifest schema version."
         },
         "origin": {
@@ -70,7 +70,11 @@
         },
         "x402": {
             "$ref": "#/$defs/X402Root",
-            "description": "x402 payment discovery metadata. Declares that this provider supports x402 (HTTP 402) payment negotiation. Enables agents to discover payment capabilities before making a request."
+            "description": "Legacy (v1.2) x402 payment discovery metadata. For v1.3+, use the payments wrapper instead. Kept for backward compatibility."
+        },
+        "payments": {
+            "$ref": "#/$defs/Payments",
+            "description": "Payment protocol discovery. Each key is a protocol name (e.g., x402, l402, mpp). Presence of a key means the protocol is supported. Added in v1.3."
         }
     },
     "$defs": {
@@ -174,7 +178,11 @@
                 },
                 "x402": {
                     "$ref": "#/$defs/X402Intent",
-                    "description": "Per-intent x402 payment metadata. Overrides or extends root-level x402 configuration for this intent."
+                    "description": "Legacy (v1.2) per-intent x402 payment metadata. For v1.3+, use the payments wrapper instead."
+                },
+                "payments": {
+                    "$ref": "#/$defs/PaymentsIntent",
+                    "description": "Per-intent payment protocol overrides. Each key is a protocol name. Added in v1.3."
                 }
             },
             "allOf": [
@@ -481,6 +489,131 @@
                     "type": "number",
                     "minimum": 0,
                     "description": "Network-specific discounted price per request when using a prepaid session ticket."
+                }
+            }
+        },
+        "Payments": {
+            "type": "object",
+            "description": "Payment protocol discovery wrapper. Each key is a protocol name (e.g., x402, l402, mpp). Presence of a key means the protocol is supported. Unknown protocol keys are allowed for future extensibility.",
+            "additionalProperties": true,
+            "properties": {
+                "x402": {
+                    "$ref": "#/$defs/PaymentsX402Root"
+                },
+                "l402": {
+                    "$ref": "#/$defs/L402Root"
+                },
+                "mpp": {
+                    "$ref": "#/$defs/MPPRoot"
+                }
+            }
+        },
+        "PaymentsX402Root": {
+            "type": "object",
+            "additionalProperties": false,
+            "patternProperties": {
+                "^x-": {}
+            },
+            "description": "x402 payment discovery within the payments wrapper. Presence under payments means x402 is supported — no 'supported' field required. Same fields as legacy X402Root but without requiring 'supported'.",
+            "properties": {
+                "supported": {
+                    "type": "boolean",
+                    "description": "Optional. Can be set to false to explicitly advertise awareness without support."
+                },
+                "network": {
+                    "type": "string",
+                    "description": "Settlement network for single-network providers. Ignored when networks array is present."
+                },
+                "asset": {
+                    "type": "string",
+                    "description": "Payment asset for single-network providers. Ignored when networks array is present."
+                },
+                "contract": {
+                    "type": "string",
+                    "description": "Token contract address for ERC-20 assets in single-network mode."
+                },
+                "facilitator": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL of the x402 facilitator service."
+                },
+                "recipient": {
+                    "type": "string",
+                    "description": "Recipient address for x402 payments. Overrides the manifest's payout_address."
+                },
+                "networks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/X402NetworkConfig"
+                    },
+                    "minItems": 1,
+                    "description": "Multi-network x402 configuration. When present, flat fields are ignored."
+                }
+            }
+        },
+        "L402Root": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "L402 payment protocol configuration. L402 uses HTTP 402 challenges with macaroon-based authentication and Lightning Network invoices. The server issues a macaroon + BOLT 11 invoice; the client pays and presents macaroon:preimage as proof.",
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "description": "L402 protocol version (e.g., \"0\")."
+                },
+                "lightning_address": {
+                    "type": "string",
+                    "description": "Lightning address for direct payments (e.g., api@example.com). Note: Lightning Addresses are a separate standard from the L402 challenge-response flow, but are included here for Lightning payment discovery."
+                },
+                "lnurl": {
+                    "type": "string",
+                    "description": "LNURL endpoint for Lightning payment negotiation. Like lightning_address, this is a complementary Lightning standard."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of L402 payment terms."
+                },
+                "recipient": {
+                    "type": "string",
+                    "description": "Override recipient. Defaults to the manifest's payout_address."
+                }
+            }
+        },
+        "MPPRoot": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Managed Payment Provider configuration. Enables payment via traditional payment processors.",
+            "properties": {
+                "stripe_account": {
+                    "type": "string",
+                    "description": "Stripe Connect account ID (e.g., acct_...)."
+                },
+                "provider": {
+                    "type": "string",
+                    "description": "Payment provider identifier (e.g., stripe, square, adyen)."
+                },
+                "recipient": {
+                    "type": "string",
+                    "description": "Override recipient. Defaults to the manifest's payout_address."
+                }
+            }
+        },
+        "PaymentsIntent": {
+            "type": "object",
+            "description": "Per-intent payment protocol overrides. Each key is a protocol name. Allows per-intent pricing and configuration for each payment protocol.",
+            "additionalProperties": true,
+            "properties": {
+                "x402": {
+                    "$ref": "#/$defs/X402Intent"
+                },
+                "l402": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Per-intent L402 overrides."
+                },
+                "mpp": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Per-intent MPP overrides."
                 }
             }
         },
