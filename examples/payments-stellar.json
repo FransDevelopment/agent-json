@@ -1,0 +1,67 @@
+{
+  "version": "1.3",
+  "origin": "api.stellar-remit.example.com",
+  "payout_address": "GBDEVU63Y6NTHJQQZIKVTC23NWLQVP3WJ2RI2OTSJTNYOIGICST6DUXR",
+  "display_name": "Stellar Cross-Border Payments",
+  "description": "Cross-border payment corridor API built on Stellar. Real-time FX rates, compliance checks, and instant settlement across 40+ currencies.",
+  "payments": {
+    "x402": {
+      "networks": [
+        {
+          "network": "stellar",
+          "asset": "USDC",
+          "contract": "USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        }
+      ],
+      "recipient": "GBDEVU63Y6NTHJQQZIKVTC23NWLQVP3WJ2RI2OTSJTNYOIGICST6DUXR"
+    }
+  },
+  "intents": [
+    {
+      "name": "get_fx_rate",
+      "description": "Get real-time foreign exchange rate between any two supported currencies. Includes spread, fees, and estimated settlement time.",
+      "endpoint": "/api/v1/rate",
+      "method": "GET",
+      "parameters": {
+        "from": { "type": "string", "required": true, "description": "Source currency ISO code (e.g. USD, EUR, NGN)" },
+        "to": { "type": "string", "required": true, "description": "Destination currency ISO code" },
+        "amount": { "type": "number", "required": false, "description": "Amount to convert (for fee calculation)" }
+      },
+      "price": {
+        "amount": 0.001,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": "stellar"
+      },
+      "payments": {
+        "x402": {
+          "direct_price": 0.001,
+          "ticket_price": 0.0005
+        }
+      }
+    },
+    {
+      "name": "check_compliance",
+      "description": "Run KYC/AML compliance checks for a cross-border transfer. Returns risk score, required documentation, and regulatory notes for the corridor.",
+      "endpoint": "/api/v1/compliance",
+      "method": "POST",
+      "parameters": {
+        "from_country": { "type": "string", "required": true, "description": "Sender country ISO code" },
+        "to_country": { "type": "string", "required": true, "description": "Recipient country ISO code" },
+        "amount_usd": { "type": "number", "required": true, "description": "Transfer amount in USD equivalent" }
+      },
+      "price": {
+        "amount": 0.05,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": "stellar"
+      },
+      "payments": {
+        "x402": {
+          "direct_price": 0.05,
+          "ticket_price": 0.03
+        }
+      }
+    }
+  ]
+}

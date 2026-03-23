@@ -1,0 +1,64 @@
+{
+  "version": "1.3",
+  "origin": "api.solana-service.example.com",
+  "payout_address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "display_name": "Solana DeFi Analytics",
+  "description": "Real-time Solana DeFi analytics API. Track token prices, liquidity pools, and wallet activity across Solana protocols.",
+  "payments": {
+    "x402": {
+      "networks": [
+        {
+          "network": "solana",
+          "asset": "USDC",
+          "contract": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        }
+      ],
+      "recipient": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    }
+  },
+  "intents": [
+    {
+      "name": "get_token_price",
+      "description": "Get the current price and 24h change for any SPL token on Solana. Returns price in USD, market cap, volume, and liquidity depth.",
+      "endpoint": "/api/v1/price",
+      "method": "GET",
+      "parameters": {
+        "mint": { "type": "string", "required": true, "description": "SPL token mint address" }
+      },
+      "price": {
+        "amount": 0.001,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": "solana"
+      },
+      "payments": {
+        "x402": {
+          "direct_price": 0.001,
+          "ticket_price": 0.0005
+        }
+      }
+    },
+    {
+      "name": "analyze_wallet",
+      "description": "Analyze a Solana wallet's DeFi positions, token holdings, and transaction history. Returns portfolio breakdown and yield estimates.",
+      "endpoint": "/api/v1/wallet",
+      "method": "GET",
+      "parameters": {
+        "address": { "type": "string", "required": true, "description": "Solana wallet address (base58)" },
+        "include_history": { "type": "boolean", "required": false, "description": "Include recent transaction history" }
+      },
+      "price": {
+        "amount": 0.01,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": "solana"
+      },
+      "payments": {
+        "x402": {
+          "direct_price": 0.01,
+          "ticket_price": 0.007
+        }
+      }
+    }
+  ]
+}

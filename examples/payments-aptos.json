@@ -1,0 +1,63 @@
+{
+  "version": "1.3",
+  "origin": "api.aptos-nft.example.com",
+  "payout_address": "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890",
+  "display_name": "Aptos NFT Intelligence",
+  "description": "NFT analytics and valuation API for the Aptos ecosystem. Collection rankings, rarity scores, and price predictions.",
+  "payments": {
+    "x402": {
+      "networks": [
+        {
+          "network": "aptos",
+          "asset": "USDC",
+          "contract": "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+        }
+      ],
+      "recipient": "0x1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890"
+    }
+  },
+  "intents": [
+    {
+      "name": "get_collection_stats",
+      "description": "Get floor price, volume, listings count, and holder distribution for any Aptos NFT collection.",
+      "endpoint": "/api/v1/collection",
+      "method": "GET",
+      "parameters": {
+        "collection_id": { "type": "string", "required": true, "description": "Aptos collection address or name" }
+      },
+      "price": {
+        "amount": 0.005,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": "aptos"
+      },
+      "payments": {
+        "x402": {
+          "direct_price": 0.005,
+          "ticket_price": 0.003
+        }
+      }
+    },
+    {
+      "name": "estimate_nft_value",
+      "description": "AI-powered valuation estimate for a specific NFT based on trait rarity, collection trends, and comparable sales.",
+      "endpoint": "/api/v1/valuation",
+      "method": "GET",
+      "parameters": {
+        "token_id": { "type": "string", "required": true, "description": "NFT token address or ID" }
+      },
+      "price": {
+        "amount": 0.02,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": "aptos"
+      },
+      "payments": {
+        "x402": {
+          "direct_price": 0.02,
+          "ticket_price": 0.015
+        }
+      }
+    }
+  ]
+}
