@@ -290,6 +290,22 @@ function validateCommitments(commitments, identity, errors, warnings) {
         }
       }
     }
+
+    // Warn on unknown fields in commitment entries
+    const knownEntryFields = ["type", "constraint", "verifiable", "ref"];
+    for (const key of Object.keys(entry)) {
+      if (!knownEntryFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
+        warnings.push(`${prefix}: unknown field "${key}"`);
+      }
+    }
+  }
+
+  // Warn on unknown fields in commitments object
+  const knownCommitmentsFields = ["schema_version", "entries", "signature"];
+  for (const key of Object.keys(commitments)) {
+    if (!knownCommitmentsFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
+      warnings.push(`commitments: unknown field "${key}"`);
+    }
   }
 
   if (commitments.signature !== undefined) {
@@ -322,6 +338,14 @@ function validateIdentity(identity, errors, warnings) {
   if (identity.public_key !== undefined) {
     if (typeof identity.public_key !== "string") {
       errors.push('"identity.public_key" must be a string');
+    }
+  }
+
+  // Warn on unknown fields in identity object
+  const knownIdentityFields = ["did", "public_key", "oatr_issuer_id"];
+  for (const key of Object.keys(identity)) {
+    if (!knownIdentityFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
+      warnings.push(`identity: unknown field "${key}"`);
     }
   }
 
