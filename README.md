@@ -2,7 +2,7 @@
 
 **The open capability manifest for the agent internet.**
 
-[![Spec Version](https://img.shields.io/badge/spec-v1.3-blue)](./SPECIFICATION.md)
+[![Spec Version](https://img.shields.io/badge/spec-v1.4-blue)](./SPECIFICATION.md)
 [![Schema](https://img.shields.io/badge/schema-JSON%20Schema%202020--12-green)](./schema.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](./LICENSE)
 [![npm](https://img.shields.io/npm/v/agent-json-validate)](https://www.npmjs.com/package/agent-json-validate)
@@ -48,7 +48,7 @@ This repository establishes a standardized, decentralized, open protocol to solv
 
 ```json
 {
-  "version": "1.3",
+  "version": "1.4",
   "origin": "yoursite.com",
   "payout_address": "0xYOUR_WALLET_ADDRESS",
   "display_name": "Your Service",
@@ -103,7 +103,8 @@ The protocol supports progressive integration. Start minimal, add detail as your
 | **1 — Minimal** | `version` + `origin` + `payout_address` | Interact via web automation | Pay bounties for routing |
 | **2 — Structured** | Add `intents` with descriptions and parameters | Precise capability matching, better routing | Pay bounties + receive runtime incentives |
 | **2+ — Direct API** | Add `endpoint` and `method` to intents | Agents call your API directly, no browser needed | Charge users prices + receive runtime incentives |
-| **3 — Authenticated** | Add `identity` metadata | Runtime-specific trust policies and richer provider identity | All of the above + optional runtime-specific trust flows |
+| **3 — Authenticated** | Add `identity` metadata (DID, public key, optional `oatr_issuer_id`) | Runtime-specific trust policies, OATR trust registration, richer provider identity | All of the above + optional runtime-specific trust flows |
+| **3+ — Committed** | Add `commitments` block | Agents and discovery registries can verify behavioral invariants (latency, uptime, data residency) | All of the above + verifiable service commitments |
 
 Start at Tier 1. Add detail as your integration matures. Each tier earns more because each tier provides more value to agents and their users.
 
@@ -357,6 +358,7 @@ const isValid = ajv.validate(schema, manifest);
 | [payment-intent-hosted.json](./examples/payment-intent-hosted.json) | Hosted checkout and crypto tipping |
 | [x402-micropayments.json](./examples/x402-micropayments.json) | Multi-network x402 micropayments with per-network pricing |
 | [payments-multiprotocol.json](./examples/payments-multiprotocol.json) | Multi-protocol payment discovery (x402 + L402 + MPP) |
+| [v14-consolidated-trust.json](./examples/v14-consolidated-trust.json) | v1.4 manifest with OATR trust registration, behavioral commitments, and ref URLs |
 
 ---
 
@@ -364,7 +366,7 @@ const isValid = ajv.validate(schema, manifest);
 
 **Required fields:** `version`, `origin`, `payout_address`
 
-**Optional fields:** `display_name`, `description`, `extensions`, `identity`, `intents`, `bounty`, `incentive`, `x402`, `payments`
+**Optional fields:** `display_name`, `description`, `extensions`, `identity`, `intents`, `bounty`, `incentive`, `x402`, `payments`, `commitments`
 
 **Intent fields:** `name`, `description`, `extensions`, `endpoint`, `method`, `parameters`, `returns`, `price`, `bounty`, `incentive`, `x402`, `payments`
 
