@@ -162,7 +162,7 @@ Manifest signing and verification are **not** standardized in v1.0. Runtimes tha
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `version` | string | **yes** | Manifest schema version. `"1.0"`, `"1.1"`, `"1.2"`, or `"1.3"`. |
+| `version` | string | **yes** | Manifest schema version. `"1.0"`, `"1.1"`, `"1.2"`, `"1.3"`, or `"1.4"`. |
 | `origin` | string | **yes** | The domain this manifest represents. Must match the domain serving the file. Example: `"example.com"` |
 | `payout_address` | string | **yes** | Wallet address for receiving payments. Currently USDC on Base L2. Example: `"0x..."` |
 | `display_name` | string | no | Human-readable service name. Used in dashboards and reporting. |
@@ -174,6 +174,7 @@ Manifest signing and verification are **not** standardized in v1.0. Runtimes tha
 | `incentive` | object | no | Default suggested incentive for all intents. See §4.6. Can be overridden per-intent. |
 | `x402` | object | no | x402 payment discovery metadata. See §4.8. Declares support for x402 (HTTP 402) payment negotiation. |
 | `payments` | object | no | Payment protocol discovery wrapper. See §4.9. Added in v1.3. |
+| `commitments` | object | no | Behavioral commitments the service declares. Can be unsigned (discovery) or signed (enforcement). See §4.10. Added in v1.4. |
 
 ### 4.2 Intent Object
 
@@ -371,12 +372,13 @@ This is standard B2B operational language. It implies optional encouragement rat
 
 ### 4.7 Identity Object (Tier 3)
 
-Optional provider identity metadata for authenticated provider integration.
+Optional provider identity metadata for authenticated provider integration. In v1.4+, the identity block can also serve as domain verification for OATR registration, replacing the need for a separate `/.well-known/agent-trust.json` file.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `did` | string | no | Decentralized Identifier. Example: `"did:web:example.com"` |
-| `public_key` | string | no | Base64url-encoded public key material advertised by the provider |
+| `public_key` | string | no | Base64url-encoded Ed25519 public key material advertised by the provider. |
+| `oatr_issuer_id` | string | no | Issuer ID in the [Open Agent Trust Registry](https://github.com/FransDevelopment/open-agent-trust-registry). Must be lowercase alphanumeric and hyphens, minimum 2 characters (e.g., `"my-runtime"`). When present, the OATR CI uses this field for domain verification instead of requiring a separate `/.well-known/agent-trust.json` file. Added in v1.4. |
 
 ### 4.8 x402 Object
 
@@ -633,6 +635,58 @@ For x402 pricing within `payments`:
 - **v1.2 manifests** with top-level `x402` remain valid. Runtimes should check `payments.x402` first, then fall back to top-level `x402`.
 - **v1.2 intent-level** `x402` also remains valid. Runtimes should check `intent.payments.x402` first, then fall back to `intent.x402`.
 - If both `x402` and `payments.x402` are present, `payments.x402` takes precedence.
+
+### 4.10 Commitments Object (v1.4+)
+
+Optional behavioral commitments the service declares. Commitments allow services to declare invariants (e.g., latency bounds, data residency, uptime SLAs) that discovery registries and enforcement systems can check.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `schema_version` | string | **yes** | Commitments schema version. Currently `"1.0"`. Separate from the root manifest version to allow independent evolution. |
+| `entries` | array | **yes** | Array of `CommitmentEntry` objects. |
+| `signature` | string | no | Ed25519 signature (base64url, no padding) over the [JCS-canonicalized (RFC 8785)](https://www.rfc-editor.org/rfc/rfc8785) `entries` array, using the key from `identity.public_key`. When present, verifiers can confirm commitments have not been tampered with after publication. |
+
+#### 4.10.1 CommitmentEntry Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | **yes** | Category of commitment. Examples: `"latency_bound"`, `"data_residency"`, `"uptime_sla"`, `"rate_limit"`, `"regulatory_compliance"`. |
+| `constraint` | string | **yes** | Human-readable constraint description. This is the authoritative summary for discovery. Always present, even when `ref` points to extended documentation. |
+| `verifiable` | boolean | no | Whether this commitment can be mechanically verified by a third party (e.g., a discovery registry). Default: `false`. |
+| `ref` | string (URI) | no | URL to extended documentation for this specific commitment. The embedded `constraint` is the authoritative summary for automated discovery; `ref` provides enforcement-level detail (revision chains, legal text, audit evidence). Discovery registries read the inline entry and ignore `ref`. Enforcement systems follow `ref` when deeper verification is needed. |
+
+#### 4.10.2 Unsigned vs Signed Commitments
+
+- **Unsigned commitments** (no `signature` field) are useful for discovery. Registries index them, agents use them for routing decisions, but there is no cryptographic guarantee against tampering.
+- **Signed commitments** include an Ed25519 signature over the JCS-canonicalized `entries` array. The signature uses the same key from `identity.public_key`. Verifiers can confirm that the commitments were published by the domain operator and have not been modified.
+- Canonicalization follows [RFC 8785 (JSON Canonicalization Scheme)](https://www.rfc-editor.org/rfc/rfc8785) to ensure signature stability across serializers with different whitespace or key ordering behavior.
+
+#### 4.10.3 Inline vs Referenced Commitments
+
+Commitments can be fully inline (simple constraints) or reference external documents (complex regulatory requirements):
+
+```json
+{
+  "commitments": {
+    "schema_version": "1.0",
+    "entries": [
+      {
+        "type": "latency_bound",
+        "constraint": "p99 < 500ms",
+        "verifiable": true
+      },
+      {
+        "type": "regulatory_compliance",
+        "constraint": "SOC 2 Type II certified",
+        "verifiable": true,
+        "ref": "https://example.com/compliance/soc2-2026.json"
+      }
+    ]
+  }
+}
+```
+
+The `ref` field is per-entry, not all-or-nothing. A service with 5 simple commitments and 1 complex one only needs `ref` on the complex one. Discovery registries index the inline entries without following any URLs. Enforcement systems follow `ref` when they need depth.
 
 ---
 

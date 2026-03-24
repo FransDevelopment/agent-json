@@ -1,0 +1,67 @@
+{
+  "version": "1.4",
+  "origin": "api.example.com",
+  "payout_address": "0x0000000000000000000000000000000000000000",
+  "display_name": "Example API",
+  "description": "Financial data API with OATR trust registration and behavioral commitments. Demonstrates the v1.4 consolidated manifest: capabilities, identity, trust, and commitments in a single file.",
+  "identity": {
+    "did": "did:web:api.example.com",
+    "public_key": "dGhpcyBpcyBhIHBsYWNlaG9sZGVyIHB1YmxpYyBrZXk",
+    "oatr_issuer_id": "example-api"
+  },
+  "intents": [
+    {
+      "name": "get_stock_quote",
+      "description": "Get real-time stock price and trading data for a given ticker symbol. Returns current price, day change, volume, market cap, and 52-week range.",
+      "parameters": {
+        "symbol": { "type": "string", "required": true, "description": "Ticker symbol (e.g., AAPL, GOOGL)" }
+      },
+      "price": {
+        "amount": 0.01,
+        "currency": "USDC",
+        "model": "per_call",
+        "network": "base"
+      }
+    }
+  ],
+  "commitments": {
+    "schema_version": "1.0",
+    "entries": [
+      {
+        "type": "latency_bound",
+        "constraint": "p99 < 500ms",
+        "verifiable": true
+      },
+      {
+        "type": "data_residency",
+        "constraint": "EU-only processing",
+        "verifiable": false
+      },
+      {
+        "type": "uptime_sla",
+        "constraint": "99.9% monthly uptime",
+        "verifiable": true
+      },
+      {
+        "type": "regulatory_compliance",
+        "constraint": "SOC 2 Type II certified",
+        "verifiable": true,
+        "ref": "https://api.example.com/compliance/soc2-2026.json"
+      }
+    ]
+  },
+  "payments": {
+    "x402": {
+      "network": "base",
+      "asset": "USDC",
+      "contract": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "facilitator": "https://x402.org/facilitator",
+      "recipient": "0x0000000000000000000000000000000000000000"
+    }
+  },
+  "bounty": {
+    "type": "cpa",
+    "rate": 0.05,
+    "currency": "USDC"
+  }
+}

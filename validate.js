@@ -47,8 +47,8 @@ function validate(manifest, sourceUrl) {
   // version
   if (!manifest.version) {
     errors.push('Missing required field: "version"');
-  } else if (manifest.version !== "1.0" && manifest.version !== "1.1" && manifest.version !== "1.2" && manifest.version !== "1.3") {
-    errors.push(`Invalid version: "${manifest.version}". Expected "1.0", "1.1", "1.2", or "1.3"`);
+  } else if (manifest.version !== "1.0" && manifest.version !== "1.1" && manifest.version !== "1.2" && manifest.version !== "1.3" && manifest.version !== "1.4") {
+    errors.push(`Invalid version: "${manifest.version}". Expected "1.0", "1.1", "1.2", "1.3", or "1.4"`);
   }
 
   // origin
@@ -204,6 +204,11 @@ function validate(manifest, sourceUrl) {
     }
   }
 
+  // commitments (optional, v1.4+)
+  if (manifest.commitments !== undefined) {
+    validateCommitments(manifest.commitments, manifest.identity, errors, warnings);
+  }
+
   // Check for unknown top-level fields
   const knownFields = [
     "version",
@@ -218,6 +223,7 @@ function validate(manifest, sourceUrl) {
     "incentive",
     "x402",
     "payments",
+    "commitments",
   ];
   for (const key of Object.keys(manifest)) {
     if (!knownFields.includes(key) && !key.startsWith("x-") && !key.startsWith("x_")) {
@@ -231,6 +237,70 @@ function validate(manifest, sourceUrl) {
     warnings,
     tier: determineTier(manifest),
   };
+}
+
+function validateCommitments(commitments, identity, errors, warnings) {
+  if (typeof commitments !== "object" || commitments === null || Array.isArray(commitments)) {
+    errors.push('"commitments" must be an object');
+    return;
+  }
+
+  if (!commitments.schema_version) {
+    errors.push('"commitments.schema_version" is required');
+  } else if (commitments.schema_version !== "1.0") {
+    warnings.push(
+      `Unknown commitments schema_version: "${commitments.schema_version}". This validator supports "1.0".`
+    );
+  }
+
+  if (!Array.isArray(commitments.entries)) {
+    errors.push('"commitments.entries" must be an array');
+    return;
+  }
+
+  for (let i = 0; i < commitments.entries.length; i++) {
+    const entry = commitments.entries[i];
+    const prefix = `commitments.entries[${i}]`;
+
+    if (typeof entry !== "object" || entry === null) {
+      errors.push(`${prefix}: must be an object`);
+      continue;
+    }
+
+    if (!entry.type || typeof entry.type !== "string") {
+      errors.push(`${prefix}: missing or invalid "type"`);
+    }
+
+    if (!entry.constraint || typeof entry.constraint !== "string") {
+      errors.push(`${prefix}: missing or invalid "constraint"`);
+    }
+
+    if (entry.verifiable !== undefined && typeof entry.verifiable !== "boolean") {
+      errors.push(`${prefix}: "verifiable" must be a boolean`);
+    }
+
+    if (entry.ref !== undefined) {
+      if (typeof entry.ref !== "string") {
+        errors.push(`${prefix}: "ref" must be a string (URL)`);
+      } else {
+        try {
+          new URL(entry.ref);
+        } catch {
+          errors.push(`${prefix}: "ref" must be a valid URL`);
+        }
+      }
+    }
+  }
+
+  if (commitments.signature !== undefined) {
+    if (typeof commitments.signature !== "string") {
+      errors.push('"commitments.signature" must be a string (base64url Ed25519 signature)');
+    } else if (!identity || !identity.public_key) {
+      warnings.push(
+        '"commitments.signature" is present but no "identity.public_key" to verify against. Signature will be unverifiable.'
+      );
+    }
+  }
 }
 
 function validateIdentity(identity, errors, warnings) {
@@ -252,6 +322,16 @@ function validateIdentity(identity, errors, warnings) {
   if (identity.public_key !== undefined) {
     if (typeof identity.public_key !== "string") {
       errors.push('"identity.public_key" must be a string');
+    }
+  }
+
+  if (identity.oatr_issuer_id !== undefined) {
+    if (typeof identity.oatr_issuer_id !== "string") {
+      errors.push('"identity.oatr_issuer_id" must be a string');
+    } else if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(identity.oatr_issuer_id)) {
+      errors.push(
+        `Invalid OATR issuer ID: "${identity.oatr_issuer_id}". Must be lowercase alphanumeric and hyphens, minimum 2 characters (e.g., "my-runtime").`
+      );
     }
   }
 }

@@ -1568,6 +1568,198 @@ test("no cross-ref warning when intent payments.x402 matches root payments.x402"
   assert.ok(!result.warnings.some((w) => w.includes("not declared")));
 });
 
+// --- v1.4: OATR issuer ID and Commitments ---
+
+console.log("\n  v1.4 — OATR identity and commitments\n");
+
+test("v1.4 manifest with oatr_issuer_id passes", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    identity: {
+      did: "did:web:example.com",
+      public_key: "dGhpcyBpcyBhIHBsYWNlaG9sZGVyIHB1YmxpYyBrZXk",
+      oatr_issuer_id: "example-runtime",
+    },
+    intents: [
+      { name: "test_intent", description: "A test intent for v1.4 validation." },
+    ],
+  });
+  assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(", ")}`);
+  assert.strictEqual(result.tier, 3);
+});
+
+test("oatr_issuer_id with uppercase is rejected", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    identity: { oatr_issuer_id: "MyRuntime" },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("OATR issuer ID")));
+});
+
+test("oatr_issuer_id with single character is rejected", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    identity: { oatr_issuer_id: "a" },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("OATR issuer ID")));
+});
+
+test("valid commitments block passes", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    commitments: {
+      schema_version: "1.0",
+      entries: [
+        { type: "latency_bound", constraint: "p99 < 500ms", verifiable: true },
+        { type: "data_residency", constraint: "EU-only processing" },
+      ],
+    },
+  });
+  assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(", ")}`);
+});
+
+test("commitments entry with valid ref URL passes", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    commitments: {
+      schema_version: "1.0",
+      entries: [
+        {
+          type: "regulatory_compliance",
+          constraint: "SOC 2 Type II certified",
+          verifiable: true,
+          ref: "https://example.com/compliance/soc2-2026.json",
+        },
+      ],
+    },
+  });
+  assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(", ")}`);
+});
+
+test("commitments entry with invalid ref URL is rejected", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    commitments: {
+      schema_version: "1.0",
+      entries: [
+        { type: "compliance", constraint: "SOC 2", ref: "not-a-url" },
+      ],
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("ref")));
+});
+
+test("commitments without schema_version is rejected", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    commitments: {
+      entries: [{ type: "test", constraint: "test" }],
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("schema_version")));
+});
+
+test("commitments entry missing type is rejected", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    commitments: {
+      schema_version: "1.0",
+      entries: [{ constraint: "p99 < 500ms" }],
+    },
+  });
+  assert.strictEqual(result.valid, false);
+  assert.ok(result.errors.some((e) => e.includes("type")));
+});
+
+test("commitments signature without identity.public_key warns", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    commitments: {
+      schema_version: "1.0",
+      entries: [{ type: "test", constraint: "test" }],
+      signature: "some-base64url-signature",
+    },
+  });
+  assert.strictEqual(result.valid, true);
+  assert.ok(result.warnings.some((w) => w.includes("signature")));
+});
+
+test("v1.3 manifest without new fields still passes (backwards compatible)", () => {
+  const result = validate({
+    version: "1.3",
+    origin: "example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    intents: [
+      { name: "search", description: "Search the product catalog by keyword." },
+    ],
+  });
+  assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(", ")}`);
+});
+
+test("full v1.4 manifest with oatr_issuer_id, commitments, and ref passes", () => {
+  const result = validate({
+    version: "1.4",
+    origin: "api.example.com",
+    payout_address: "0x0000000000000000000000000000000000000000",
+    display_name: "Example API",
+    description: "A fully consolidated v1.4 manifest with trust registration and behavioral commitments.",
+    identity: {
+      did: "did:web:api.example.com",
+      public_key: "dGhpcyBpcyBhIHBsYWNlaG9sZGVyIHB1YmxpYyBrZXk",
+      oatr_issuer_id: "example-api",
+    },
+    intents: [
+      {
+        name: "analyze_document",
+        description: "Analyze a document and return structured insights.",
+        parameters: {
+          url: { type: "string", required: true, description: "The document URL." },
+        },
+      },
+    ],
+    commitments: {
+      schema_version: "1.0",
+      entries: [
+        { type: "latency_bound", constraint: "p99 < 500ms", verifiable: true },
+        { type: "data_residency", constraint: "EU-only processing", verifiable: false },
+        { type: "uptime_sla", constraint: "99.9% monthly uptime", verifiable: true },
+        {
+          type: "regulatory_compliance",
+          constraint: "SOC 2 Type II certified",
+          verifiable: true,
+          ref: "https://api.example.com/compliance/soc2-2026.json",
+        },
+      ],
+      signature: "base64url-ed25519-signature-over-jcs-canonicalized-entries",
+    },
+    bounty: { type: "cpa", rate: 0.05, currency: "USDC" },
+  });
+  assert.strictEqual(result.valid, true, `Errors: ${result.errors.join(", ")}`);
+  assert.strictEqual(result.tier, 3);
+});
+
 // --- Results ---
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);

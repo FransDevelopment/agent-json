@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://agentinternetruntime.com/schema/v1.3/agent.json",
+    "$id": "https://agentinternetruntime.com/schema/v1.4/agent.json",
     "title": "agent.json",
     "description": "Capability manifest for the agent internet. Declares what a service offers to AI agents, how to interact with it, and where to send payments.",
     "type": "object",
@@ -16,7 +16,7 @@
     "properties": {
         "version": {
             "type": "string",
-            "enum": ["1.0", "1.1", "1.2", "1.3"],
+            "enum": ["1.0", "1.1", "1.2", "1.3", "1.4"],
             "description": "Manifest schema version."
         },
         "origin": {
@@ -75,12 +75,16 @@
         "payments": {
             "$ref": "#/$defs/Payments",
             "description": "Payment protocol discovery. Each key is a protocol name (e.g., x402, l402, mpp). Presence of a key means the protocol is supported. Added in v1.3."
+        },
+        "commitments": {
+            "$ref": "#/$defs/Commitments",
+            "description": "Optional behavioral commitments the service declares. Can be unsigned (discovery) or signed (enforcement). Added in v1.4."
         }
     },
     "$defs": {
         "Identity": {
             "type": "object",
-            "description": "Provider identity metadata. Signing and verification behavior are not standardized in v1.0.",
+            "description": "Provider identity metadata. Includes optional OATR trust registration (v1.4+). Signing and verification behavior are extension-defined.",
             "additionalProperties": false,
             "patternProperties": {
                 "^x-": {}
@@ -96,7 +100,16 @@
                 },
                 "public_key": {
                     "type": "string",
-                    "description": "Base64url-encoded public key material advertised by the provider."
+                    "description": "Base64url-encoded Ed25519 public key material advertised by the provider."
+                },
+                "oatr_issuer_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+                    "description": "Issuer ID in the Open Agent Trust Registry. When present, the OATR CI uses this for domain verification instead of a separate /.well-known/agent-trust.json file. Added in v1.4.",
+                    "examples": [
+                        "my-runtime",
+                        "agentinternetruntime"
+                    ]
                 }
             }
         },
@@ -713,6 +726,72 @@
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Referring agent or discovery layer share."
+                }
+            }
+        },
+        "Commitments": {
+            "type": "object",
+            "description": "Behavioral invariants the service commits to. Unsigned commitments are useful for discovery; signed commitments (using identity.public_key) are verifiable for enforcement. Added in v1.4.",
+            "additionalProperties": false,
+            "required": ["schema_version", "entries"],
+            "properties": {
+                "schema_version": {
+                    "type": "string",
+                    "enum": ["1.0"],
+                    "description": "Commitments schema version. Separate from the root agent.json version to allow independent evolution."
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/CommitmentEntry"
+                    },
+                    "description": "Array of behavioral commitments."
+                },
+                "signature": {
+                    "type": "string",
+                    "description": "Optional Ed25519 signature (base64url, no padding) over the JCS-canonicalized (RFC 8785) entries array, using the key from identity.public_key. When present, verifiers can confirm commitments have not been tampered with after publication."
+                }
+            }
+        },
+        "CommitmentEntry": {
+            "type": "object",
+            "description": "A single behavioral commitment. Can be fully inline (simple constraints) or reference an external document via ref for enforcement-level detail.",
+            "additionalProperties": false,
+            "required": ["type", "constraint"],
+            "patternProperties": {
+                "^x-": {}
+            },
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": "Category of commitment.",
+                    "examples": [
+                        "latency_bound",
+                        "data_residency",
+                        "uptime_sla",
+                        "rate_limit",
+                        "regulatory_compliance"
+                    ]
+                },
+                "constraint": {
+                    "type": "string",
+                    "description": "Human-readable constraint description. This is the authoritative summary for discovery. Always present, even when ref points to extended documentation.",
+                    "examples": [
+                        "p99 < 500ms",
+                        "EU-only processing",
+                        "99.9% monthly uptime",
+                        "SOC 2 Type II certified"
+                    ]
+                },
+                "verifiable": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether this commitment can be mechanically verified by a third party (e.g., a discovery registry). When true, enforcement systems may probe or audit this constraint."
+                },
+                "ref": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Optional URL to extended documentation for this specific commitment. The embedded constraint is the authoritative summary for automated discovery; ref provides enforcement-level detail (revision chains, legal text, audit evidence). Discovery registries read the inline entry and ignore ref. Enforcement systems follow ref when deeper verification is needed."
                 }
             }
         }
